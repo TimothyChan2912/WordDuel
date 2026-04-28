@@ -1,10 +1,100 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <title>WordDuel - Game</title>
-  <body>
-    <h1>Word Duel</h1>
-  </body>
-</html>
+{% extends "base.html" %}
+{% block title %} — Game{% endblock %}
+{% block extra_css %}
+<link href="{{ url_for('static', filename='css/game.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<!-- Pass server data to JS -->
+<script>
+  const INIT = {
+    username: {{ username | tojson }},
+    mode:     {{ mode | tojson }},
+    user_id:  {{ session['user_id'] | tojson }}
+  };
+</script>
+
+<!-- Waiting overlay -->
+<div id="waiting-overlay" class="waiting-overlay">
+  <div class="waiting-card">
+    <div class="waiting-spinner"></div>
+    <h3>Finding Opponent…</h3>
+    <p id="queue-mode-label" class="text-muted">
+      Mode: <strong>{{ 'Classic PvP' if mode == 'classic' else 'Timed Mode' }}</strong>
+    </p>
+    <p id="bot-fallback-msg" class="text-muted" style="font-size:0.85rem; display:none;">
+      No players found — playing against <strong>WordBot</strong> in <span id="bot-countdown">12</span>s…
+    </p>
+    <p id="default-wait-msg" class="text-muted" style="font-size:0.85rem;">This usually takes under a minute</p>
+    <a href="/dashboard" class="btn btn-sm btn-cancel mt-2">Cancel</a>
+  </div>
+</div>
+
+<!-- Game UI (hidden until match found) -->
+<div id="game-ui" style="display:none;">
+
+  <!-- Match header -->
+  <div class="match-header">
+    <div class="match-info">
+      <span id="mode-badge" class="mode-badge">Classic</span>
+      <span id="match-label">vs <strong id="opponent-name">—</strong></span>
+    </div>
+    <div id="timer-display" class="timer-display" style="display:none;">
+      <i class="bi bi-stopwatch"></i> <span id="timer-text">2:00</span>
+    </div>
+  </div>
+
+  <!-- Main game area -->
+  <div class="game-area">
+
+    <!-- Your board -->
+    <div class="board-section">
+      <div class="section-label">You</div>
+      <div id="board" class="board"></div>
+      <div id="keyboard" class="keyboard"></div>
+    </div>
+
+    <!-- Divider -->
+    <div class="vs-divider">VS</div>
+
+    <!-- Opponent panel -->
+    <div class="opponent-section">
+      <div class="section-label">Opponent — <span id="opp-name-label">waiting…</span></div>
+      <div id="opp-board" class="opp-board"></div>
+      <div id="opp-status" class="opp-status">Waiting…</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Result modal -->
+<div id="result-modal" class="result-modal" style="display:none;">
+  <div class="result-card">
+    <div id="result-emoji" class="result-emoji">🏆</div>
+    <h2 id="result-title">You Win!</h2>
+    <div id="result-word" class="result-word"></div>
+    <div class="result-scores">
+      <div class="rscore">
+        <div id="your-score" class="rscore-val">0</div>
+        <div class="rscore-label">Your Score</div>
+      </div>
+      <div class="rscore">
+        <div id="opp-score" class="rscore-val">0</div>
+        <div class="rscore-label">Opponent</div>
+      </div>
+      <div class="rscore">
+        <div id="elo-change-val" class="rscore-val elo-change">+0</div>
+        <div class="rscore-label">ELO</div>
+      </div>
+    </div>
+    <div id="opp-board-reveal" class="opp-board-reveal"></div>
+    <div class="result-actions">
+      <a href="/dashboard" class="btn btn-secondary">Dashboard</a>
+      <a id="rematch-btn" class="btn btn-primary">Play Again</a>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="{{ url_for('static', filename='js/game.js') }}"></script>
+{% endblock %}

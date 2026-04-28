@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %} — Dashboard{% endblock %}
+{% block extra_css %}
+<link href="{{ url_for('static', filename='css/dashboard.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-wrapper">
+
+  <!-- Player Card -->
+  <div class="player-card">
+    <div class="avatar">{{ player.username[0].upper() }}</div>
+    <div class="player-info">
+      <h2>{{ player.username }}</h2>
+      <span class="rank-badge" style="background:{{ rank_color }}22; color:{{ rank_color }}; border:1px solid {{ rank_color }};">
+        {{ rank_name }}
+      </span>
+      <div class="elo-display">{{ player.elo }} <span>ELO</span></div>
+    </div>
+    <div class="stats-row">
+      <div class="stat">
+        <div class="stat-val">{{ player.wins }}</div>
+        <div class="stat-label">Wins</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val">{{ player.losses }}</div>
+        <div class="stat-label">Losses</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val">{{ player.games_played }}</div>
+        <div class="stat-label">Games</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val">
+          {% if player.games_played > 0 %}
+            {{ ((player.wins / player.games_played) * 100) | round(1) }}%
+          {% else %}—{% endif %}
+        </div>
+        <div class="stat-label">Win Rate</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Mode Selection -->
+  <div class="modes-section">
+    <h3>Choose Game Mode</h3>
+    <div class="modes-grid">
+      <a href="/game?mode=classic" class="mode-card">
+        <div class="mode-icon"><i class="bi bi-controller"></i></div>
+        <h4>Classic PvP</h4>
+        <p>Same word, 6 guesses each. First to solve wins. No timer.</p>
+        <span class="mode-tag">Competitive</span>
+      </a>
+      <a href="/game?mode=timed" class="mode-card mode-timed">
+        <div class="mode-icon"><i class="bi bi-stopwatch"></i></div>
+        <h4>Timed Mode</h4>
+        <p>2-minute countdown. Solve it before time runs out or your opponent does.</p>
+        <span class="mode-tag">Fast-Paced</span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Recent Matches -->
+  {% if recent_matches %}
+  <div class="recent-section">
+    <h3>Recent Matches</h3>
+    <div class="match-list">
+      {% for m in recent_matches %}
+      <div class="match-row">
+        <span class="match-mode-badge">{{ m.game_mode | capitalize }}</span>
+        <span class="match-players">{{ m.player1 }} vs {{ m.player2 }}</span>
+        {% if m.winner_id == user_id %}
+          <span class="match-result win">WIN</span>
+        {% elif m.winner_id is none %}
+          <span class="match-result draw">DRAW</span>
+        {% else %}
+          <span class="match-result loss">LOSS</span>
+        {% endif %}
+        <span class="match-date">{{ m.completed_at.strftime('%b %d') if m.completed_at else '' }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

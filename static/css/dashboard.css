@@ -1,0 +1,222 @@
+.dashboard-wrapper {
+  max-width: 860px;
+  margin: 40px auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+/* ── Player card ── */
+.player-card {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 16px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6c63ff, #a855f7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.player-info {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.player-info h2 {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #fff;
+  margin: 0;
+}
+
+.rank-badge {
+  display: inline-block;
+  padding: 3px 14px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.elo-display {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #ffd700;
+}
+.elo-display span {
+  font-size: 0.9rem;
+  color: #888;
+  font-weight: 400;
+}
+
+.stats-row {
+  display: flex;
+  gap: 40px;
+  margin-top: 8px;
+}
+
+.stat {
+  text-align: center;
+}
+.stat-val {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #fff;
+}
+.stat-label {
+  font-size: 0.75rem;
+  color: #777;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* ── Modes ── */
+.modes-section h3,
+.recent-section h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+}
+
+.modes-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.mode-card {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 14px;
+  padding: 28px 24px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+}
+.mode-card:hover {
+  border-color: #6c63ff;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px rgba(108,99,255,0.2);
+  color: inherit;
+  text-decoration: none;
+}
+.mode-timed {
+  border-color: #ff6b6b33;
+}
+.mode-timed:hover {
+  border-color: #ff6b6b;
+  box-shadow: 0 8px 30px rgba(255,107,107,0.2);
+}
+
+.mode-icon {
+  font-size: 2rem;
+  color: #6c63ff;
+}
+.mode-timed .mode-icon {
+  color: #ff6b6b;
+}
+.mode-card h4 {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #fff;
+  margin: 0;
+}
+.mode-card p {
+  font-size: 0.85rem;
+  color: #888;
+  margin: 0;
+  line-height: 1.5;
+}
+.mode-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #6c63ff;
+  background: #6c63ff22;
+  padding: 3px 10px;
+  border-radius: 20px;
+  align-self: flex-start;
+}
+.mode-timed .mode-tag {
+  color: #ff6b6b;
+  background: #ff6b6b22;
+}
+
+/* ── Recent matches ── */
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.match-row {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 10px;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.match-mode-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  background: #2a2a4a;
+  color: #aaa;
+  padding: 2px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.match-players {
+  color: #ccc;
+  font-size: 0.9rem;
+  flex: 1;
+}
+.match-result {
+  font-size: 0.75rem;
+  font-weight: 900;
+  letter-spacing: 1px;
+  padding: 3px 12px;
+  border-radius: 20px;
+}
+.match-result.win   { background: #538d4e33; color: #6aaa64; }
+.match-result.loss  { background: #ff4c4c22; color: #ff6b6b; }
+.match-result.draw  { background: #b59f3b22; color: #c9b458; }
+.match-date {
+  font-size: 0.8rem;
+  color: #555;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .modes-grid { grid-template-columns: 1fr; }
+  .stats-row  { gap: 20px; }
+}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %} — Leaderboard{% endblock %}
+{% block extra_css %}
+<style>
+.lb-wrapper { max-width: 760px; margin: 40px auto; padding: 0 20px; }
+.lb-wrapper h2 { font-weight: 900; font-size: 1.8rem; color: #fff; margin-bottom: 6px; }
+.lb-subtitle { color: #666; font-size: 0.85rem; margin-bottom: 28px; }
+
+.lb-table { width: 100%; border-collapse: separate; border-spacing: 0 6px; }
+.lb-table th {
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 2px;
+  text-transform: uppercase; color: #555; padding: 0 16px 8px;
+}
+.lb-row {
+  background: #1a1a2e;
+  transition: background 0.15s;
+}
+.lb-row:hover { background: #22223a; }
+.lb-row.me { background: #6c63ff18; outline: 1px solid #6c63ff44; }
+.lb-row td { padding: 14px 16px; }
+.lb-row td:first-child { border-radius: 10px 0 0 10px; }
+.lb-row td:last-child  { border-radius: 0 10px 10px 0; }
+
+.pos { font-weight: 900; color: #555; font-size: 1rem; min-width: 36px; }
+.pos.gold   { color: #ffd700; }
+.pos.silver { color: #c0c0c0; }
+.pos.bronze { color: #cd7f32; }
+.lb-username { font-weight: 700; color: #fff; }
+.lb-username.me-label::after { content: ' (you)'; color: #6c63ff; font-weight: 400; font-size: 0.8rem; }
+.rank-badge-sm {
+  display: inline-block;
+  padding: 2px 10px; border-radius: 20px;
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 1px; text-transform: uppercase;
+}
+.lb-elo { font-weight: 900; color: #ffd700; font-size: 1rem; }
+.lb-stat { color: #aaa; font-size: 0.9rem; }
+.lb-wr { color: #6aaa64; font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lb-wrapper">
+  <h2><i class="bi bi-trophy-fill" style="color:#ffd700"></i> Leaderboard</h2>
+  <p class="lb-subtitle">Top players ranked by ELO. Games played are required to appear.</p>
+
+  {% if players %}
+  <table class="lb-table">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Player</th>
+        <th>Rank</th>
+        <th>ELO</th>
+        <th>Wins</th>
+        <th>Losses</th>
+        <th>Win Rate</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for p in players %}
+      <tr class="lb-row {% if p.username == current_user %}me{% endif %}">
+        <td class="pos {% if p.position == 1 %}gold{% elif p.position == 2 %}silver{% elif p.position == 3 %}bronze{% endif %}">
+          {% if p.position == 1 %}🥇
+          {% elif p.position == 2 %}🥈
+          {% elif p.position == 3 %}🥉
+          {% else %}{{ p.position }}{% endif %}
+        </td>
+        <td class="lb-username {% if p.username == current_user %}me-label{% endif %}">
+          {{ p.username }}
+        </td>
+        <td>
+          <span class="rank-badge-sm" style="background:{{ p.rank_color }}22; color:{{ p.rank_color }}; border:1px solid {{ p.rank_color }}44;">
+            {{ p.rank_name }}
+          </span>
+        </td>
+        <td class="lb-elo">{{ p.elo }}</td>
+        <td class="lb-stat">{{ p.wins }}</td>
+        <td class="lb-stat">{{ p.losses }}</td>
+        <td class="lb-wr">{{ p.win_rate or '—' }}{% if p.win_rate %}%{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#555; text-align:center; margin-top:80px;">
+    No matches played yet. Be the first on the board!
+  </p>
+  {% endif %}
+</div>
+{% endblock %}

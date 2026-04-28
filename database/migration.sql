@@ -1,0 +1,13 @@
+-- Run this against an existing WordDuel database to add new columns
+ALTER TABLE `players`
+  ADD COLUMN IF NOT EXISTS `elo`          INT UNSIGNED NOT NULL DEFAULT 1000,
+  ADD COLUMN IF NOT EXISTS `wins`         INT UNSIGNED NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `losses`       INT UNSIGNED NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `games_played` INT UNSIGNED NOT NULL DEFAULT 0;
+
+ALTER TABLE `matches`
+  ADD COLUMN IF NOT EXISTS `game_mode` ENUM('classic','timed') NOT NULL DEFAULT 'classic';
+
+ALTER TABLE `match_results`
+  ADD COLUMN IF NOT EXISTS `player1_score` INT UNSIGNED NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `player2_score` INT UNSIGNED NOT NULL DEFAULT 0;
