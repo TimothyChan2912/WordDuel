@@ -41,6 +41,52 @@
     </div>
   </div>
 
+  <!-- Stats Charts -->
+  <div class="stats-charts-section">
+    <h3>Performance</h3>
+    <div class="charts-grid">
+
+      <!-- Win / Loss / Draw donut -->
+      <div class="chart-card">
+        <div class="chart-card-title">Win / Loss</div>
+        <div class="donut-wrap">
+          <canvas id="winloss-chart"></canvas>
+          <div class="donut-center">
+            <div class="donut-pct">
+              {% if player.games_played > 0 %}
+                {{ ((player.wins / player.games_played) * 100) | round | int }}%
+              {% else %}—{% endif %}
+            </div>
+            <div class="donut-pct-label">Win Rate</div>
+          </div>
+        </div>
+        <div class="chart-legend">
+          <span><span class="leg-dot" style="background:#538d4e"></span>Wins {{ player.wins }}</span>
+          <span><span class="leg-dot" style="background:#ff6b6b"></span>Losses {{ player.losses }}</span>
+          {% set draws = player.games_played - player.wins - player.losses %}
+          {% if draws > 0 %}
+          <span><span class="leg-dot" style="background:#b59f3b"></span>Draws {{ draws }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Classic vs Timed -->
+      <div class="chart-card">
+        <div class="chart-card-title">Classic vs Timed</div>
+        <canvas id="mode-chart"></canvas>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Activity -->
+  <div class="activity-section">
+    <h3>Last 14 Days</h3>
+    <div class="chart-card">
+      <canvas id="activity-chart"></canvas>
+    </div>
+  </div>
+
   <!-- Game Mode Selection -->
   <div class="modes-section">
     <h3>Choose Game Mode</h3>
@@ -57,7 +103,27 @@
         <p>2-minute countdown. Solve it before time runs out or your opponent does.</p>
         <span class="mode-tag">Fast-Paced</span>
       </a>
+      <a href="/game?mode=streak" class="mode-card mode-streak">
+        <div class="mode-icon"><i class="bi bi-lightning-fill"></i></div>
+        <h4>Streak Mode</h4>
+        <p>Keep solving words in a row. One wrong answer and it's over — outlast your opponent.</p>
+        <span class="mode-tag">Survival</span>
+      </a>
     </div>
+  </div>
+
+  <!-- Incoming challenge toast (shown if someone challenges you while you're here) -->
+  <div id="challenge-toast" class="challenge-toast" style="display:none;">
+    <div class="toast-header">
+      <i class="bi bi-controller"></i>
+      <strong id="toast-challenger">—</strong> challenged you!
+    </div>
+    <div id="toast-details" class="toast-details"></div>
+    <div class="toast-actions">
+      <button id="toast-decline" class="btn-toast-decline">Decline</button>
+      <button id="toast-accept"  class="btn-toast-accept">Accept</button>
+    </div>
+    <div id="toast-timer" class="toast-timer"></div>
   </div>
 
   <!-- Recent Matches -->
@@ -84,4 +150,151 @@
   {% endif %}
 
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  Chart.defaults.color = '#888';
+  Chart.defaults.font.family = "'Lato', sans-serif";
+
+  const gridColor = '#2a2a4a';
+  const wins   = {{ player.wins }};
+  const losses = {{ player.losses }};
+  const draws  = {{ player.games_played - player.wins - player.losses }};
+
+  // ── Win / Loss donut ──────────────────────────────────────────────────────
+  new Chart(document.getElementById('winloss-chart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Wins', 'Losses', 'Draws'],
+      datasets: [{
+        data: wins + losses + draws > 0 ? [wins, losses, draws] : [1, 0, 0],
+        backgroundColor: wins + losses + draws > 0
+          ? ['#538d4e', '#ff6b6b', '#b59f3b']
+          : ['#2a2a4a'],
+        borderColor: '#1a1a2e',
+        borderWidth: 3,
+      }]
+    },
+    options: {
+      cutout: '72%',
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { enabled: wins + losses + draws > 0 } },
+    }
+  });
+
+  // ── Classic vs Timed ──────────────────────────────────────────────────────
+  const modeStats = {{ mode_stats | tojson }};
+  new Chart(document.getElementById('mode-chart'), {
+    type: 'bar',
+    data: {
+      labels: ['Classic', 'Timed'],
+      datasets: [
+        {
+          label: 'Wins',
+          data: [modeStats.classic?.wins || 0, modeStats.timed?.wins || 0],
+          backgroundColor: '#538d4e',
+          borderRadius: 5,
+        },
+        {
+          label: 'Losses',
+          data: [modeStats.classic?.losses || 0, modeStats.timed?.losses || 0],
+          backgroundColor: '#ff6b6b',
+          borderRadius: 5,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#aaa', boxWidth: 12, padding: 16 } } },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: gridColor } },
+        y: { ticks: { color: '#888', precision: 0 }, grid: { color: gridColor }, beginAtZero: true },
+      }
+    }
+  });
+
+  // ── Challenge notifications ───────────────────────────────────────────────
+  const notifSocket     = io();
+  let activeChallengeId = null;
+  let toastDismissTimer = null;
+
+  notifSocket.on('challenge_received', data => {
+    activeChallengeId = data.challenge_id;
+    document.getElementById('toast-challenger').textContent = data.challenger_name;
+    document.getElementById('toast-details').textContent =
+      `${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)} · ${data.category}`;
+    document.getElementById('challenge-toast').style.display = 'block';
+    clearTimeout(toastDismissTimer);
+    let sec = 30;
+    const timerEl = document.getElementById('toast-timer');
+    timerEl.textContent = `Auto-dismisses in ${sec}s`;
+    const iv = setInterval(() => {
+      sec--;
+      timerEl.textContent = `Auto-dismisses in ${sec}s`;
+      if (sec <= 0) { clearInterval(iv); dismissChallengeToast(); }
+    }, 1000);
+    toastDismissTimer = iv;
+  });
+
+  notifSocket.on('challenge_accepted_ack', data => {
+    window.location.href = `/game?mode=${data.mode}&private=${data.match_key}`;
+  });
+
+  document.getElementById('toast-accept').addEventListener('click', () => {
+    if (!activeChallengeId) return;
+    notifSocket.emit('accept_challenge', {challenge_id: activeChallengeId});
+    notifSocket.once('redirect_to_game', data => {
+      window.location.href = `/game?mode=${data.mode}&private=${data.match_key}`;
+    });
+    dismissChallengeToast();
+  });
+
+  document.getElementById('toast-decline').addEventListener('click', () => {
+    if (!activeChallengeId) return;
+    notifSocket.emit('decline_challenge', {challenge_id: activeChallengeId});
+    dismissChallengeToast();
+  });
+
+  function dismissChallengeToast() {
+    clearTimeout(toastDismissTimer);
+    document.getElementById('challenge-toast').style.display = 'none';
+    activeChallengeId = null;
+  }
+
+  // ── Activity last 14 days ─────────────────────────────────────────────────
+  const activity = {{ activity | tojson }};
+  new Chart(document.getElementById('activity-chart'), {
+    type: 'bar',
+    data: {
+      labels: activity.map(d => d.label),
+      datasets: [
+        {
+          label: 'Games',
+          data: activity.map(d => d.games),
+          backgroundColor: '#6c63ff33',
+          borderColor: '#6c63ff',
+          borderWidth: 1,
+          borderRadius: 4,
+        },
+        {
+          label: 'Wins',
+          data: activity.map(d => d.wins),
+          backgroundColor: '#538d4e',
+          borderRadius: 4,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#aaa', boxWidth: 12, padding: 16 } } },
+      scales: {
+        x: { ticks: { color: '#888', maxRotation: 40, font: { size: 11 } }, grid: { color: gridColor } },
+        y: { ticks: { color: '#888', precision: 0 }, grid: { color: gridColor }, beginAtZero: true },
+      }
+    }
+  });
+</script>
 {% endblock %}

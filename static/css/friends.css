@@ -1,0 +1,277 @@
+.friends-wrapper {
+  max-width: 700px;
+  margin: 40px auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.friends-header h2 {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #fff;
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.friends-header h2 i { color: #6c63ff; }
+
+/* ── Cards ── */
+.friends-card {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #555;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.req-badge {
+  background: #ff6b6b33;
+  color: #ff6b6b;
+  border-radius: 20px;
+  padding: 1px 8px;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+.friends-count-badge {
+  background: #6c63ff22;
+  color: #6c63ff;
+  border-radius: 20px;
+  padding: 1px 8px;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+/* ── Add Friend form ── */
+.add-friend-row {
+  display: flex;
+  gap: 10px;
+}
+.add-friend-row input {
+  flex: 1;
+  background: #12121e;
+  border: 1px solid #2a2a4a;
+  border-radius: 10px;
+  padding: 11px 16px;
+  color: #e8e8e8;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.add-friend-row input:focus { border-color: #6c63ff; }
+
+.btn-add-friend {
+  background: #6c63ff;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 20px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.2s;
+}
+.btn-add-friend:hover    { background: #5a52e0; }
+.btn-add-friend:disabled { background: #3a3a6a; cursor: not-allowed; }
+
+.add-friend-result {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.88rem;
+}
+.result-success { background: #538d4e22; color: #6aaa64; border: 1px solid #538d4e44; }
+.result-error   { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b44; }
+.result-info    { background: #6c63ff22; color: #a89fff; border: 1px solid #6c63ff44; }
+
+/* ── Friend list rows ── */
+.friend-list { display: flex; flex-direction: column; gap: 8px; }
+
+.friend-row {
+  background: #12121e;
+  border: 1px solid #22223a;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: border-color 0.2s;
+}
+.friend-row:hover { border-color: #3a3a5a; }
+
+.friend-avatar {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, #6c63ff, #a855f7);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; font-weight: 900; color: #fff;
+}
+
+.friend-info { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.friend-name-row { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.friend-name { font-weight: 700; color: #e8e8e8; font-size: 0.95rem; }
+.friend-elo  { font-size: 0.8rem; color: #666; }
+
+.rank-badge {
+  font-size: 0.65rem; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; padding: 2px 8px;
+  border-radius: 20px; border: 1px solid;
+}
+
+.online-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.online-yes { background: #4caf50; box-shadow: 0 0 6px #4caf5066; }
+.online-no  { background: #444; }
+
+.friend-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+.btn-challenge {
+  background: #6c63ff22; color: #6c63ff;
+  border: 1px solid #6c63ff44; border-radius: 8px;
+  padding: 6px 14px; font-size: 0.85rem; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; gap: 5px;
+  transition: background 0.2s; white-space: nowrap;
+}
+.btn-challenge:hover { background: #6c63ff44; }
+
+.btn-remove {
+  background: transparent; color: #555; border: 1px solid #2a2a4a;
+  border-radius: 8px; padding: 6px 12px; font-size: 0.82rem;
+  cursor: pointer; transition: color 0.2s, border-color 0.2s;
+  white-space: nowrap;
+}
+.btn-remove:hover { color: #ff6b6b; border-color: #ff6b6b55; }
+
+.btn-accept {
+  background: #538d4e22; color: #6aaa64; border: 1px solid #538d4e44;
+  border-radius: 8px; padding: 6px 14px; font-size: 0.85rem; font-weight: 700;
+  cursor: pointer; white-space: nowrap;
+}
+.btn-decline {
+  background: transparent; color: #666; border: 1px solid #2a2a4a;
+  border-radius: 8px; padding: 6px 12px; font-size: 0.82rem; cursor: pointer;
+  white-space: nowrap;
+}
+
+.tag-pending {
+  font-size: 0.75rem; color: #666;
+  background: #33333322; padding: 4px 12px;
+  border-radius: 20px; border: 1px solid #333;
+}
+.tag-offline {
+  font-size: 0.75rem; color: #555;
+  background: #33333322; padding: 4px 12px;
+  border-radius: 20px;
+}
+
+.friends-empty {
+  color: #555; font-size: 0.9rem; text-align: center;
+  padding: 20px 0;
+}
+
+/* ── Challenge modal ── */
+.challenge-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+  z-index: 2000; display: flex; align-items: center; justify-content: center;
+}
+.challenge-card {
+  background: #1a1a2e; border: 1px solid #3a3a5a;
+  border-radius: 16px; padding: 32px; min-width: 320px; max-width: 420px;
+  display: flex; flex-direction: column; gap: 20px;
+}
+.challenge-card h3 { margin: 0; font-size: 1.3rem; font-weight: 900; color: #fff; }
+.challenge-field { display: flex; flex-direction: column; gap: 8px; }
+.challenge-field > label {
+  font-size: 0.72rem; color: #666; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+.mode-radio-group { display: flex; gap: 14px; }
+.mode-radio-group label {
+  font-size: 0.9rem; color: #ccc; cursor: pointer;
+  display: flex; align-items: center; gap: 5px;
+  text-transform: none; letter-spacing: 0;
+}
+.challenge-field select {
+  background: #12121e; border: 1px solid #2a2a4a; border-radius: 8px;
+  color: #e8e8e8; padding: 9px 12px; font-size: 0.9rem; outline: none; cursor: pointer;
+}
+.challenge-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-ch-cancel {
+  background: transparent; color: #888; border: 1px solid #333;
+  border-radius: 8px; padding: 9px 20px; cursor: pointer; font-size: 0.9rem;
+}
+.btn-ch-send {
+  background: #6c63ff; color: #fff; border: none;
+  border-radius: 8px; padding: 9px 22px; cursor: pointer;
+  font-size: 0.9rem; font-weight: 700; transition: background 0.2s;
+}
+.btn-ch-send:hover { background: #5a52e0; }
+
+/* ── Challenge received toast ── */
+.challenge-toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: #1a1a2e; border: 1px solid #6c63ff55;
+  border-radius: 14px; padding: 18px 20px; min-width: 280px; max-width: 340px;
+  z-index: 3000; box-shadow: 0 8px 40px rgba(108,99,255,0.25);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.toast-header {
+  font-size: 0.95rem; font-weight: 700; color: #e8e8e8;
+  display: flex; align-items: center; gap: 8px;
+}
+.toast-header i { color: #6c63ff; font-size: 1.1rem; }
+.toast-details { font-size: 0.85rem; color: #888; }
+.toast-actions { display: flex; gap: 8px; }
+.btn-toast-accept {
+  background: #6c63ff; color: #fff; border: none;
+  border-radius: 8px; padding: 7px 16px; cursor: pointer;
+  font-size: 0.85rem; font-weight: 700; flex: 1; transition: background 0.2s;
+}
+.btn-toast-accept:hover { background: #5a52e0; }
+.btn-toast-decline {
+  background: transparent; color: #888; border: 1px solid #333;
+  border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 0.85rem;
+}
+.toast-timer { font-size: 0.72rem; color: #444; }
+
+/* ── Generic toast ── */
+.generic-toast {
+  position: fixed; bottom: 24px; left: 24px;
+  background: #1a1a2e; border: 1px solid #2a2a4a;
+  border-radius: 12px; padding: 14px 18px;
+  color: #e8e8e8; font-size: 0.9rem; z-index: 2999;
+  max-width: 340px; opacity: 0; transform: translateY(10px);
+  transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+}
+.generic-toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.generic-toast .gt-body { color: #aaa; font-size: 0.85rem; margin-top: 4px; }
+.btn-go {
+  display: inline-block; margin-top: 4px;
+  background: #6c63ff22; color: #6c63ff; border: 1px solid #6c63ff44;
+  border-radius: 6px; padding: 5px 14px; font-size: 0.85rem; font-weight: 700;
+  text-decoration: none; transition: background 0.2s;
+}
+.btn-go:hover { background: #6c63ff44; }
+
+@media (max-width: 600px) {
+  .friend-actions { flex-wrap: wrap; }
+  .friends-wrapper { padding: 0 12px; }
+}

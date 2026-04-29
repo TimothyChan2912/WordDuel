@@ -1,3 +1,31 @@
+/* ── Category picker ── */
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  width: 100%;
+  max-width: 300px;
+  margin-top: 14px;
+}
+.cat-btn {
+  background: #1a1a2e;
+  border: 1px solid #3a3a5c;
+  color: #ccc;
+  border-radius: 10px;
+  padding: 14px 8px;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Lato', sans-serif;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-align: center;
+}
+.cat-btn:hover {
+  background: #2a2a4a;
+  border-color: #6c63ff;
+  color: #fff;
+}
+
 /* ── Waiting overlay ── */
 .waiting-overlay {
   position: fixed; inset: 0;
@@ -8,6 +36,11 @@
 .waiting-card {
   text-align: center;
   display: flex; flex-direction: column; align-items: center; gap: 12px;
+  max-width: 340px; width: 92%;
+}
+#category-step, #waiting-step {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  width: 100%;
 }
 .waiting-card h3 { font-weight: 900; font-size: 1.6rem; color: #fff; margin: 0; }
 .waiting-spinner {
@@ -230,6 +263,63 @@
 .opp-rev-tile.absent  { background: #3a3a3c; border-color: #3a3a3c; }
 
 .result-actions { display: flex; gap: 12px; margin-top: 8px; }
+
+/* ── Post-match chat ── */
+.post-match-chat {
+  width: 100%;
+  border-top: 1px solid #2a2a4a;
+  padding-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #555;
+}
+.chat-messages {
+  max-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-right: 4px;
+}
+.chat-messages::-webkit-scrollbar { width: 4px; }
+.chat-messages::-webkit-scrollbar-thumb { background: #3a3a5c; border-radius: 4px; }
+.chat-msg { font-size: 0.85rem; color: #ccc; word-break: break-word; line-height: 1.4; }
+.chat-msg .chat-name { font-weight: 700; color: #6c63ff; margin-right: 6px; }
+.chat-msg .chat-name.me { color: #6aaa64; }
+.chat-input-row { display: flex; gap: 8px; }
+.chat-input-row input {
+  flex: 1;
+  background: #0f0f13;
+  border: 1px solid #3a3a5c;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #fff;
+  font-size: 0.85rem;
+  font-family: 'Lato', sans-serif;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.chat-input-row input:focus { border-color: #6c63ff; }
+.chat-input-row button {
+  background: #6c63ff;
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: 'Lato', sans-serif;
+  transition: background 0.15s;
+}
+.chat-input-row button:hover { background: #7c73ff; }
 .result-actions .btn-secondary {
   background: #2a2a4a; border: none; color: #ccc; padding: 10px 24px; border-radius: 8px;
   text-decoration: none; font-weight: 700;
@@ -239,6 +329,55 @@
   text-decoration: none; font-weight: 700; cursor: pointer;
 }
 .result-actions .btn-primary:hover { background: #7c73ff; }
+
+/* ── Leave button ── */
+.btn-leave {
+  background: transparent;
+  border: 1px solid #ff6b6b55;
+  color: #ff6b6b;
+  padding: 5px 14px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: 'Lato', sans-serif;
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-leave:hover { background: #ff6b6b22; border-color: #ff6b6b; }
+
+/* ── Confirm leave modal ── */
+.confirm-modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 700;
+}
+.confirm-card {
+  background: #1a1a2e;
+  border: 1px solid #3a3a5c;
+  border-radius: 16px;
+  padding: 32px 28px;
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  max-width: 340px; width: 90%;
+}
+.confirm-card h3 { font-weight: 900; font-size: 1.4rem; color: #fff; margin: 0; }
+.confirm-card p  { color: #888; font-size: 0.9rem; margin: 0; }
+.confirm-actions { display: flex; gap: 12px; margin-top: 4px; }
+.btn-confirm-yes {
+  background: #ff6b6b; border: none; color: #fff;
+  padding: 10px 24px; border-radius: 8px;
+  font-weight: 700; cursor: pointer; font-size: 0.9rem;
+  font-family: 'Lato', sans-serif;
+}
+.btn-confirm-yes:hover { background: #ff4444; }
+.btn-confirm-no {
+  background: #2a2a4a; border: none; color: #ccc;
+  padding: 10px 24px; border-radius: 8px;
+  font-weight: 700; cursor: pointer; font-size: 0.9rem;
+  font-family: 'Lato', sans-serif;
+}
+.btn-confirm-no:hover { background: #3a3a5a; }
 
 @media (max-width: 700px) {
   .game-area { flex-direction: column; align-items: center; gap: 20px; }

@@ -17,16 +17,42 @@
 <!-- Waiting overlay -->
 <div id="waiting-overlay" class="waiting-overlay">
   <div class="waiting-card">
-    <div class="waiting-spinner"></div>
-    <h3>Finding Opponent…</h3>
-    <p id="queue-mode-label" class="text-muted">
-      Mode: <strong>{{ 'Classic PvP' if mode == 'classic' else 'Timed Mode' }}</strong>
-    </p>
-    <p id="bot-fallback-msg" class="text-muted" style="font-size:0.85rem; display:none;">
-      No players found — playing against <strong>WordBot</strong> in <span id="bot-countdown">12</span>s…
-    </p>
-    <p id="default-wait-msg" class="text-muted" style="font-size:0.85rem;">This usually takes under a minute</p>
-    <a href="/dashboard" class="btn btn-sm btn-cancel mt-2">Cancel</a>
+
+    <!-- Step 1: Category selection -->
+    <div id="category-step">
+      <h3>Choose a Category</h3>
+      <p class="text-muted" style="font-size:0.85rem; margin-bottom:4px;">
+        Mode: <strong>{{ 'Classic PvP' if mode == 'classic' else ('Timed Mode' if mode == 'timed' else 'Streak Mode') }}</strong>
+      </p>
+      <p class="text-muted" style="font-size:0.82rem; margin-bottom:0;">You'll be matched with players in the same category</p>
+      <div class="category-grid">
+        <button class="cat-btn" data-cat="general">🌐 General</button>
+        <button class="cat-btn" data-cat="sports">⚽ Sports</button>
+        <button class="cat-btn" data-cat="science">🔬 Science</button>
+        <button class="cat-btn" data-cat="movies">🎬 Movies</button>
+        <button class="cat-btn" data-cat="food">🍕 Food</button>
+        <button class="cat-btn" data-cat="animals">🦁 Animals</button>
+        <button class="cat-btn" data-cat="geography">🗺️ Geography</button>
+        <button class="cat-btn" data-cat="music">🎵 Music</button>
+      </div>
+      <a href="/dashboard" class="btn btn-sm btn-cancel" style="margin-top:16px;">Cancel</a>
+    </div>
+
+    <!-- Step 2: Waiting spinner (shown after category selected) -->
+    <div id="waiting-step" style="display:none; flex-direction:column; align-items:center; gap:12px;">
+      <div class="waiting-spinner"></div>
+      <h3>Finding Opponent…</h3>
+      <p id="queue-mode-label" class="text-muted" style="font-size:0.85rem;">
+        Mode: <strong>{{ 'Classic PvP' if mode == 'classic' else ('Timed Mode' if mode == 'timed' else 'Streak Mode') }}</strong>
+        &nbsp;·&nbsp; Category: <strong id="selected-cat-label">—</strong>
+      </p>
+      <p id="bot-fallback-msg" class="text-muted" style="font-size:0.85rem; display:none;">
+        No players found — playing against <strong>WordBot</strong> in <span id="bot-countdown">12</span>s…
+      </p>
+      <p id="default-wait-msg" class="text-muted" style="font-size:0.85rem;">This usually takes under a minute</p>
+      <a href="/dashboard" class="btn btn-sm btn-cancel mt-2">Cancel</a>
+    </div>
+
   </div>
 </div>
 
@@ -38,9 +64,19 @@
     <div class="match-info">
       <span id="mode-badge" class="mode-badge">Classic</span>
       <span id="match-label">vs <strong id="opponent-name">—</strong></span>
+      <span id="streak-info" style="display:none; font-size:0.85rem; color:#aaa;">
+        Round <strong id="round-num">1</strong>
+        &nbsp;·&nbsp;
+        <span style="color:#ffd700; font-weight:700;">
+          <i class="bi bi-lightning-fill"></i> <span id="streak-count">0</span>
+        </span>
+      </span>
     </div>
-    <div id="timer-display" class="timer-display" style="display:none;">
-      <i class="bi bi-stopwatch"></i> <span id="timer-text">2:00</span>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <div id="timer-display" class="timer-display" style="display:none;">
+        <i class="bi bi-stopwatch"></i> <span id="timer-text">2:00</span>
+      </div>
+      <button id="leave-btn" class="btn-leave" style="display:none;">Leave Game</button>
     </div>
   </div>
 
@@ -67,6 +103,18 @@
   </div>
 </div>
 
+<!-- Confirm leave modal -->
+<div id="confirm-leave-modal" class="confirm-modal" style="display:none;">
+  <div class="confirm-card">
+    <h3>Leave Game?</h3>
+    <p>You will forfeit the match and your opponent will win.</p>
+    <div class="confirm-actions">
+      <button id="confirm-no" class="btn-confirm-no">No, Stay</button>
+      <button id="confirm-yes" class="btn-confirm-yes">Yes, Leave</button>
+    </div>
+  </div>
+</div>
+
 <!-- Result modal -->
 <div id="result-modal" class="result-modal" style="display:none;">
   <div class="result-card">
@@ -76,11 +124,11 @@
     <div class="result-scores">
       <div class="rscore">
         <div id="your-score" class="rscore-val">0</div>
-        <div class="rscore-label">Your Score</div>
+        <div id="your-score-label" class="rscore-label">Your Score</div>
       </div>
       <div class="rscore">
         <div id="opp-score" class="rscore-val">0</div>
-        <div class="rscore-label">Opponent</div>
+        <div id="opp-score-label" class="rscore-label">Opponent</div>
       </div>
       <div class="rscore">
         <div id="elo-change-val" class="rscore-val elo-change">+0</div>
@@ -91,6 +139,16 @@
     <div class="result-actions">
       <a href="/dashboard" class="btn btn-secondary">Dashboard</a>
       <a id="rematch-btn" class="btn btn-primary">Play Again</a>
+    </div>
+
+    <!-- Post-match chat -->
+    <div id="post-match-chat" class="post-match-chat" style="display:none;">
+      <div class="chat-header">Chat with opponent</div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <input id="chat-input" type="text" placeholder="Say something…" maxlength="200" autocomplete="off">
+        <button id="chat-send">Send</button>
+      </div>
     </div>
   </div>
 </div>

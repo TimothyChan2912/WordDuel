@@ -1,11 +1,12 @@
 from flask import Flask, render_template, request, session, jsonify, url_for, redirect, flash
 from flask_socketio import SocketIO, emit, join_room
 import os, random, time
+from datetime import date, timedelta
 import mysql.connector.pooling
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from functools import wraps
-from words import WORDS, VALID_WORDS
+from words import WORDS, VALID_WORDS, CATEGORY_WORDS
 
 # Bot constants
 BOT_WAIT_TIME = 12       # seconds before spawning a bot if no match found
@@ -45,10 +46,18 @@ def login_required(f):
     return decorated
 
 # ── In-memory state ──────────────────────────────────────────────────────────
-matchmaking_queues = {"classic": [], "timed": []}
+CATEGORIES = ["general", "sports", "science", "movies", "food", "animals", "geography", "music"]
+matchmaking_queues = {
+    mode: {cat: [] for cat in CATEGORIES}
+    for mode in ("classic", "timed", "streak")
+}
 active_matches  = {}   # match_id  → match dict
 player_to_match = {}   # user_id   → match_id
 sid_to_user     = {}   # socket id → user_id
+post_match_rooms   = {}  # user_id   → match_id (for post-game chat)
+user_to_sids       = {}  # user_id   → set of active sids (for challenge notifications)
+pending_challenges = {}  # cid (str) → challenge dict
+private_waiting    = {}  # match_key → lobby dict
 
 # ── Wordle core logic ─────────────────────────────────────────────────────────
 def check_guess(guess, answer):
@@ -89,9 +98,10 @@ def get_rank(elo):
 
 def _remove_from_queue(user_id):
     for mode in matchmaking_queues:
-        matchmaking_queues[mode] = [
-            p for p in matchmaking_queues[mode] if p["user_id"] != user_id
-        ]
+        for cat in matchmaking_queues[mode]:
+            matchmaking_queues[mode][cat] = [
+                p for p in matchmaking_queues[mode][cat] if p["user_id"] != user_id
+            ]
 
 # ── HTTP routes ───────────────────────────────────────────────────────────────
 @app.route("/")
@@ -178,11 +188,58 @@ def dashboard():
                 (user_id, user_id),
             )
             recent = cur.fetchall()
+            # Mode breakdown (classic vs timed)
+            cur.execute(
+                """
+                SELECT m.game_mode,
+                       COUNT(*) AS games,
+                       SUM(CASE WHEN mr.winner_id = %s THEN 1 ELSE 0 END) AS wins,
+                       SUM(CASE WHEN mr.winner_id IS NOT NULL AND mr.winner_id != %s THEN 1 ELSE 0 END) AS losses
+                FROM matches m
+                LEFT JOIN match_results mr ON m.id = mr.match_id
+                WHERE (m.player1_id = %s OR m.player2_id = %s) AND m.status = 'completed'
+                GROUP BY m.game_mode
+                """,
+                (user_id, user_id, user_id, user_id),
+            )
+            mode_stats = {r["game_mode"]: r for r in cur.fetchall()}
+
+            # Activity last 14 days
+            cur.execute(
+                """
+                SELECT DATE(m.completed_at) AS day,
+                       COUNT(*) AS games,
+                       SUM(CASE WHEN mr.winner_id = %s THEN 1 ELSE 0 END) AS wins
+                FROM matches m
+                LEFT JOIN match_results mr ON m.id = mr.match_id
+                WHERE (m.player1_id = %s OR m.player2_id = %s)
+                  AND m.status = 'completed'
+                  AND m.completed_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
+                GROUP BY DATE(m.completed_at)
+                ORDER BY day
+                """,
+                (user_id, user_id, user_id),
+            )
+            activity_rows = {r["day"]: r for r in cur.fetchall()}
             cur.close()
     except Exception as e:
         print(e)
         player = {"username": session["username"], "elo": 1000, "wins": 0, "losses": 0, "games_played": 0}
         recent = []
+        mode_stats = {}
+        activity_rows = {}
+
+    # Fill in all 14 days (including days with no games)
+    today = date.today()
+    activity = []
+    for i in range(13, -1, -1):
+        d = today - timedelta(days=i)
+        row = activity_rows.get(d, {})
+        activity.append({
+            "label": d.strftime("%b %d"),
+            "games": int(row.get("games", 0) or 0),
+            "wins":  int(row.get("wins",  0) or 0),
+        })
 
     rank_name, rank_color = get_rank(player["elo"] if player else 1000)
     return render_template(
@@ -192,15 +249,16 @@ def dashboard():
         user_id=user_id,
         rank_name=rank_name,
         rank_color=rank_color,
+        mode_stats=mode_stats,
+        activity=activity,
     )
 
 @app.route("/game")
 @login_required
 def game():
     mode = request.args.get("mode", "classic")
-    if mode not in ("classic", "timed"):
+    if mode not in ("classic", "timed", "streak"):
         mode = "classic"
-    # Navigating to /game always starts fresh — drop any stale match reference
     player_to_match.pop(session["user_id"], None)
     return render_template("game.html", username=session["username"], mode=mode)
 
@@ -235,6 +293,185 @@ def leaderboard():
         current_user=session["username"],
     )
 
+@app.route("/friends")
+@login_required
+def friends():
+    return render_template("friends.html")
+
+
+# ── Friends HTTP API ─────────────────────────────────────────────────────────
+
+@app.route("/api/friends")
+@login_required
+def api_friends():
+    user_id = session["user_id"]
+    try:
+        with get_db() as db:
+            cur = db.cursor(dictionary=True)
+            cur.execute(
+                """SELECT p.id, p.username, p.elo
+                   FROM friends f JOIN players p ON f.friend_id = p.id
+                   WHERE f.player_id = %s AND f.status = 'accepted'
+                   ORDER BY p.username""",
+                (user_id,),
+            )
+            friends = cur.fetchall()
+            cur.execute(
+                """SELECT p.id, p.username, p.elo
+                   FROM friends f JOIN players p ON f.player_id = p.id
+                   WHERE f.friend_id = %s AND f.status = 'pending'
+                   ORDER BY f.created_at DESC""",
+                (user_id,),
+            )
+            incoming = cur.fetchall()
+            cur.execute(
+                """SELECT p.id, p.username, p.elo
+                   FROM friends f JOIN players p ON f.friend_id = p.id
+                   WHERE f.player_id = %s AND f.status = 'pending'
+                   ORDER BY f.created_at DESC""",
+                (user_id,),
+            )
+            outgoing = cur.fetchall()
+            cur.close()
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Database error"}), 500
+
+    for f in friends:
+        f["online"] = bool(user_to_sids.get(f["id"]))
+        f["rank_name"], f["rank_color"] = get_rank(f["elo"])
+
+    return jsonify({"friends": friends, "incoming": incoming, "outgoing": outgoing})
+
+
+@app.route("/api/users/search")
+@login_required
+def api_users_search():
+    q = request.args.get("q", "").strip()
+    if len(q) < 2:
+        return jsonify({"users": []})
+    user_id = session["user_id"]
+    try:
+        with get_db() as db:
+            cur = db.cursor(dictionary=True)
+            cur.execute(
+                """SELECT p.id, p.username, p.elo,
+                          f.status  AS friend_status,
+                          f2.status AS reverse_status
+                   FROM players p
+                   LEFT JOIN friends f  ON f.player_id  = %s AND f.friend_id  = p.id
+                   LEFT JOIN friends f2 ON f2.player_id = p.id AND f2.friend_id = %s
+                   WHERE p.username LIKE %s AND p.id != %s
+                   LIMIT 8""",
+                (user_id, user_id, f"%{q}%", user_id),
+            )
+            users = cur.fetchall()
+            cur.close()
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Database error"}), 500
+    return jsonify({"users": users})
+
+
+@app.route("/api/friends/request", methods=["POST"])
+@login_required
+def api_friend_request():
+    user_id   = session["user_id"]
+    data      = request.get_json() or {}
+    target_id = data.get("user_id")
+    if not target_id or target_id == user_id:
+        return jsonify({"error": "Invalid user"}), 400
+    try:
+        with get_db() as db:
+            cur = db.cursor()
+            cur.execute(
+                "INSERT IGNORE INTO friends (player_id, friend_id, status) VALUES (%s, %s, 'pending')",
+                (user_id, target_id),
+            )
+            cur.close()
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Database error"}), 500
+
+    for sid in user_to_sids.get(target_id, set()):
+        socketio.emit("friend_request_received", {
+            "from_id":       user_id,
+            "from_username": session["username"],
+        }, room=sid)
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/friends/accept", methods=["POST"])
+@login_required
+def api_friend_accept():
+    user_id      = session["user_id"]
+    data         = request.get_json() or {}
+    requester_id = data.get("user_id")
+    if not requester_id:
+        return jsonify({"error": "Invalid user"}), 400
+    try:
+        with get_db() as db:
+            cur = db.cursor()
+            cur.execute(
+                "UPDATE friends SET status='accepted' WHERE player_id=%s AND friend_id=%s AND status='pending'",
+                (requester_id, user_id),
+            )
+            cur.execute(
+                "INSERT IGNORE INTO friends (player_id, friend_id, status) VALUES (%s, %s, 'accepted')",
+                (user_id, requester_id),
+            )
+            cur.close()
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Database error"}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/api/friends/decline", methods=["POST"])
+@login_required
+def api_friend_decline():
+    user_id      = session["user_id"]
+    data         = request.get_json() or {}
+    requester_id = data.get("user_id")
+    if not requester_id:
+        return jsonify({"error": "Invalid user"}), 400
+    try:
+        with get_db() as db:
+            cur = db.cursor()
+            cur.execute(
+                "DELETE FROM friends WHERE player_id=%s AND friend_id=%s AND status='pending'",
+                (requester_id, user_id),
+            )
+            cur.close()
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Database error"}), 500
+    return jsonify({"ok": True})
+
+
+@app.route("/api/friends/remove", methods=["POST"])
+@login_required
+def api_friend_remove():
+    user_id   = session["user_id"]
+    data      = request.get_json() or {}
+    friend_id = data.get("user_id")
+    if not friend_id:
+        return jsonify({"error": "Invalid user"}), 400
+    try:
+        with get_db() as db:
+            cur = db.cursor()
+            cur.execute(
+                "DELETE FROM friends WHERE (player_id=%s AND friend_id=%s) OR (player_id=%s AND friend_id=%s)",
+                (user_id, friend_id, friend_id, user_id),
+            )
+            cur.close()
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Database error"}), 500
+    return jsonify({"ok": True})
+
+
 # ── SocketIO events ───────────────────────────────────────────────────────────
 @socketio.on("connect")
 def on_connect():
@@ -244,6 +481,9 @@ def on_connect():
         print("[CONNECT] Rejected — no session")
         return False
     sid_to_user[request.sid] = user_id
+    if user_id not in user_to_sids:
+        user_to_sids[user_id] = set()
+    user_to_sids[user_id].add(request.sid)
     # Reconnect to active match
     match_id = player_to_match.get(user_id)
     if match_id and match_id in active_matches:
@@ -268,6 +508,218 @@ def on_disconnect():
     user_id = sid_to_user.pop(request.sid, None)
     if user_id:
         _remove_from_queue(user_id)
+        post_match_rooms.pop(user_id, None)
+        sids = user_to_sids.get(user_id, set())
+        sids.discard(request.sid)
+        if not sids:
+            user_to_sids.pop(user_id, None)
+
+@socketio.on("chat_message")
+def on_chat_message(data):
+    user_id  = session.get("user_id")
+    username = session.get("username")
+    if not user_id:
+        return
+    match_id = post_match_rooms.get(user_id)
+    if not match_id:
+        return
+    message = str(data.get("message", "")).strip()[:200]
+    if not message:
+        return
+    socketio.emit("chat_message", {
+        "username": username,
+        "message":  message,
+    }, room=match_id)
+
+@socketio.on("challenge_friend")
+def on_challenge_friend(data):
+    user_id  = session.get("user_id")
+    username = session.get("username")
+    if not user_id:
+        return
+
+    friend_id = data.get("friend_id")
+    mode      = data.get("mode", "classic")
+    category  = data.get("category", "general")
+
+    if mode not in matchmaking_queues:
+        mode = "classic"
+    if category not in CATEGORIES:
+        category = "general"
+
+    try:
+        with get_db() as db:
+            cur = db.cursor(dictionary=True)
+            cur.execute(
+                "SELECT 1 FROM friends WHERE player_id=%s AND friend_id=%s AND status='accepted'",
+                (user_id, friend_id),
+            )
+            ok = cur.fetchone()
+            cur.execute("SELECT username FROM players WHERE id=%s", (friend_id,))
+            friend_row = cur.fetchone()
+            cur.close()
+        if not ok:
+            emit("challenge_error", {"message": "Not friends with this user"})
+            return
+        challenged_name = friend_row["username"] if friend_row else "Opponent"
+    except Exception as e:
+        print(e)
+        emit("challenge_error", {"message": "Database error"})
+        return
+
+    if not user_to_sids.get(friend_id):
+        emit("challenge_error", {"message": f"{challenged_name} is not online right now"})
+        return
+
+    cid       = f"c_{user_id}_{friend_id}_{int(time.time()*1000)}"
+    match_key = f"pm_{user_id}_{friend_id}_{int(time.time()*1000)}"
+
+    pending_challenges[cid] = {
+        "challenger_id":    user_id,
+        "challenger_name":  username,
+        "challenged_id":    friend_id,
+        "challenged_name":  challenged_name,
+        "mode":             mode,
+        "category":         category,
+        "match_key":        match_key,
+        "expires_at":       time.time() + 120,
+    }
+    private_waiting[match_key] = {
+        "challenger_id":   user_id,
+        "challenger_name": username,
+        "challenged_id":   friend_id,
+        "challenged_name": challenged_name,
+        "mode":            mode,
+        "category":        category,
+        "players":         [],
+        "expires_at":      time.time() + 120,
+    }
+
+    for sid in user_to_sids.get(friend_id, set()):
+        socketio.emit("challenge_received", {
+            "challenge_id":    cid,
+            "challenger_name": username,
+            "mode":            mode,
+            "category":        category,
+        }, room=sid)
+
+    emit("challenge_sent", {
+        "match_key":     match_key,
+        "mode":          mode,
+        "category":      category,
+        "friend_name":   challenged_name,
+    })
+
+
+@socketio.on("accept_challenge")
+def on_accept_challenge(data):
+    user_id = session.get("user_id")
+    if not user_id:
+        return
+
+    if player_to_match.get(user_id):
+        emit("error", {"message": "You are already in a game"})
+        return
+
+    cid = data.get("challenge_id")
+    ch  = pending_challenges.get(cid)
+
+    if not ch or ch["challenged_id"] != user_id:
+        emit("error", {"message": "Invalid or expired challenge"})
+        return
+    if time.time() > ch["expires_at"]:
+        pending_challenges.pop(cid, None)
+        emit("error", {"message": "Challenge expired"})
+        return
+
+    match_key = ch["match_key"]
+    mode      = ch["mode"]
+    category  = ch["category"]
+    pending_challenges.pop(cid, None)
+
+    for sid in user_to_sids.get(ch["challenger_id"], set()):
+        socketio.emit("challenge_accepted_ack", {
+            "match_key":   match_key,
+            "mode":        mode,
+            "category":    category,
+            "accepted_by": session.get("username"),
+        }, room=sid)
+
+    emit("redirect_to_game", {
+        "match_key": match_key,
+        "mode":      mode,
+        "category":  category,
+    })
+
+
+@socketio.on("decline_challenge")
+def on_decline_challenge(data):
+    user_id = session.get("user_id")
+    if not user_id:
+        return
+
+    cid = data.get("challenge_id")
+    ch  = pending_challenges.pop(cid, None)
+
+    if ch:
+        private_waiting.pop(ch.get("match_key"), None)
+        for sid in user_to_sids.get(ch["challenger_id"], set()):
+            socketio.emit("challenge_declined", {
+                "declined_by": session.get("username"),
+            }, room=sid)
+
+
+@socketio.on("join_private_match")
+def on_join_private_match(data):
+    user_id  = session.get("user_id")
+    username = session.get("username")
+    if not user_id:
+        return
+
+    match_key = data.get("match_key")
+    lobby     = private_waiting.get(match_key)
+
+    if not lobby:
+        emit("error", {"message": "Private match not found or expired"})
+        return
+    if time.time() > lobby["expires_at"]:
+        private_waiting.pop(match_key, None)
+        emit("error", {"message": "Private match expired"})
+        return
+    if user_id not in (lobby["challenger_id"], lobby["challenged_id"]):
+        emit("error", {"message": "Not authorized for this match"})
+        return
+
+    try:
+        with get_db() as db:
+            cur = db.cursor(dictionary=True)
+            cur.execute("SELECT elo FROM players WHERE id=%s", (user_id,))
+            row = cur.fetchone()
+            cur.close()
+        elo = row["elo"] if row else 1000
+    except Exception:
+        elo = 1000
+
+    player = {
+        "user_id":   user_id,
+        "username":  username,
+        "elo":       elo,
+        "sid":       request.sid,
+        "joined_at": time.time(),
+    }
+
+    lobby["players"] = [p for p in lobby["players"] if p["user_id"] != user_id]
+    lobby["players"].append(player)
+
+    opp_name = lobby["challenged_name"] if user_id == lobby["challenger_id"] else lobby["challenger_name"]
+
+    if len(lobby["players"]) == 2:
+        p1, p2 = lobby["players"]
+        del private_waiting[match_key]
+        _create_match(p1, p2, lobby["mode"], lobby["category"])
+    else:
+        emit("private_match_waiting", {"waiting_for": opp_name})
+
 
 @socketio.on("join_queue")
 def on_join_queue(data):
@@ -282,7 +734,12 @@ def on_join_queue(data):
     if mode not in matchmaking_queues:
         mode = "classic"
 
+    category = data.get("category", "general")
+    if category not in CATEGORIES:
+        category = "general"
+
     _remove_from_queue(user_id)
+    post_match_rooms.pop(user_id, None)
 
     try:
         with get_db() as db:
@@ -295,18 +752,46 @@ def on_join_queue(data):
         elo = 1000
 
     joined_at = time.time()
-    matchmaking_queues[mode].append({
+    matchmaking_queues[mode][category].append({
         "user_id":   user_id,
         "username":  username,
         "elo":       elo,
         "sid":       request.sid,
         "joined_at": joined_at,
     })
-    print(f"[QUEUE] {username} joined {mode} queue. Queue size: {len(matchmaking_queues[mode])}")
-    emit("queue_joined", {"mode": mode})
-    _try_match(mode)
-    # If still unmatched after BOT_WAIT_TIME, spawn a bot opponent
-    socketio.start_background_task(_maybe_bot_match, user_id, mode, joined_at)
+    print(f"[QUEUE] {username} joined {mode}/{category} queue. Size: {len(matchmaking_queues[mode][category])}")
+    emit("queue_joined", {"mode": mode, "category": category})
+    _try_match(mode, category)
+    socketio.start_background_task(_maybe_bot_match, user_id, mode, category, joined_at)
+
+@socketio.on("forfeit")
+def on_forfeit():
+    user_id = session.get("user_id")
+    if not user_id:
+        return
+
+    match_id = player_to_match.get(user_id)
+    if not match_id or match_id not in active_matches:
+        return
+
+    match = active_matches[match_id]
+    ps = match["players"].get(str(user_id))
+    if not ps or ps["done"]:
+        return
+
+    ps["done"] = True
+    ps["won"]  = False
+    match["forfeited"] = True
+
+    opp_id = str(ps["opponent_id"])
+    opp_ps = match["players"].get(opp_id)
+    if opp_ps and not opp_ps["done"]:
+        opp_ps["done"] = True
+        opp_ps["won"]  = True
+        if not opp_ps["score"]:
+            opp_ps["score"] = 100
+
+    _end_match(match_id)
 
 @socketio.on("leave_queue")
 def on_leave_queue():
@@ -328,7 +813,7 @@ def on_submit_guess(data):
 
     match = active_matches[match_id]
     ps = match["players"].get(str(user_id))
-    if not ps or ps["done"]:
+    if not ps or ps["done"] or ps.get("round_done"):
         return
 
     guess = data.get("guess", "").upper().strip()
@@ -346,6 +831,10 @@ def on_submit_guess(data):
 
     ps["guesses"].append(guess)
     ps["results"].append(result)
+
+    if match["mode"] == "streak":
+        _handle_streak_guess(match_id, match, ps, guess, result, won, guess_number)
+        return
 
     if won:
         ps["done"]       = True
@@ -380,10 +869,208 @@ def on_submit_guess(data):
     if all_done or (won and match["mode"] == "classic"):
         _end_match(match_id)
 
+
+def _handle_streak_guess(match_id, match, ps, guess, result, won, guess_number):
+    opp_id = str(ps["opponent_id"])
+    opp_ps = match["players"].get(opp_id)
+
+    if won:
+        ps["streak"]    += 1
+        ps["round_done"] = True
+        ps["round_won"]  = True
+
+        emit("guess_result", {
+            "guess":            guess,
+            "result":           result,
+            "guess_number":     guess_number,
+            "solved":           True,
+            "game_over":        False,
+            "score":            ps["streak"] * 100,
+            "streak_round_won": True,
+            "streak":           ps["streak"],
+        })
+
+        if opp_ps and opp_ps.get("sid"):
+            socketio.emit("opponent_progress", {
+                "guesses_made": guess_number,
+                "solved":       True,
+                "done":         False,
+                "all_results":  ps["results"],
+            }, room=opp_ps["sid"])
+
+        if all(p["round_done"] for p in match["players"].values()):
+            if not match.get("round_transitioning"):
+                match["round_transitioning"] = True
+                socketio.start_background_task(_streak_next_round, match_id)
+
+    elif guess_number >= 6:
+        ps["done"]       = True
+        ps["eliminated"] = True
+
+        emit("guess_result", {
+            "guess":        guess,
+            "result":       result,
+            "guess_number": guess_number,
+            "solved":       False,
+            "game_over":    True,
+            "score":        0,
+            "streak":       ps["streak"],
+        })
+
+        if opp_ps and opp_ps.get("sid"):
+            socketio.emit("opponent_progress", {
+                "guesses_made": guess_number,
+                "solved":       False,
+                "done":         True,
+                "all_results":  ps["results"],
+            }, room=opp_ps["sid"])
+
+        if opp_ps and not opp_ps.get("eliminated"):
+            opp_ps["done"]  = True
+            opp_ps["won"]   = True
+            opp_ps["score"] = opp_ps["streak"] * 100
+
+        _end_match(match_id)
+
+    else:
+        emit("guess_result", {
+            "guess":        guess,
+            "result":       result,
+            "guess_number": guess_number,
+            "solved":       False,
+            "game_over":    False,
+            "score":        0,
+        })
+
+        if opp_ps and opp_ps.get("sid"):
+            socketio.emit("opponent_progress", {
+                "guesses_made": guess_number,
+                "solved":       False,
+                "done":         False,
+                "all_results":  ps["results"],
+            }, room=opp_ps["sid"])
+
+
+def _streak_next_round(match_id):
+    socketio.sleep(1.5)
+    match = active_matches.get(match_id)
+    if not match or match["ended"]:
+        return
+
+    match["current_round"] += 1
+    idx = match["current_round"]
+
+    if idx >= len(match.get("words") or []):
+        _end_match(match_id)
+        return
+
+    match["word"]              = match["words"][idx]
+    match["round_transitioning"] = False
+
+    for ps in match["players"].values():
+        ps["guesses"]    = []
+        ps["results"]    = []
+        ps["round_done"] = False
+        ps["round_won"]  = False
+
+    socketio.emit("streak_next_round", {"round": idx + 1}, room=match_id)
+
+
+def _bot_play_streak(match_id):
+    """Bot solves bot_target rounds then fails, ending the game."""
+    bot_target = random.randint(1, 4)
+
+    while True:
+        # Wait for the start of a fresh round
+        while True:
+            match  = active_matches.get(match_id)
+            if not match or match["ended"]:
+                return
+            bot_ps = match["players"].get(BOT_USER_ID)
+            if not bot_ps or bot_ps.get("eliminated"):
+                return
+            if not bot_ps.get("round_done"):
+                break
+            socketio.sleep(0.5)
+
+        current_streak = bot_ps.get("streak", 0)
+
+        # Simulate thinking time
+        socketio.sleep(random.uniform(BOT_DELAY_MIN, BOT_DELAY_MAX * 2))
+
+        match  = active_matches.get(match_id)
+        if not match or match["ended"]:
+            return
+        bot_ps = match["players"].get(BOT_USER_ID)
+        if not bot_ps or bot_ps.get("round_done"):
+            continue
+
+        human_id = str(bot_ps["opponent_id"])
+        human_ps = match["players"].get(human_id)
+
+        if current_streak < bot_target:
+            # Bot solves this round
+            word   = match["word"]
+            result = ["correct"] * 5
+            bot_ps["guesses"].append(word)
+            bot_ps["results"].append(result)
+            bot_ps["streak"]    += 1
+            bot_ps["round_done"] = True
+            bot_ps["round_won"]  = True
+
+            if human_ps and human_ps.get("sid"):
+                socketio.emit("opponent_progress", {
+                    "guesses_made": 1,
+                    "solved":       True,
+                    "done":         False,
+                    "all_results":  [result],
+                }, room=human_ps["sid"])
+
+            if all(p["round_done"] for p in match["players"].values()):
+                if not match.get("round_transitioning"):
+                    match["round_transitioning"] = True
+                    _streak_next_round(match_id)
+        else:
+            # Bot fails — make 6 wrong guesses
+            word = match["word"]
+            used = {word}
+            for attempt in range(6):
+                wrong = random.choice([w.upper() for w in VALID_WORDS if w.upper() not in used] or list(VALID_WORDS))
+                used.add(wrong)
+                r = check_guess(wrong, word)
+                bot_ps["guesses"].append(wrong)
+                bot_ps["results"].append(r)
+
+                if human_ps and human_ps.get("sid"):
+                    socketio.emit("opponent_progress", {
+                        "guesses_made": attempt + 1,
+                        "solved":       False,
+                        "done":         attempt == 5,
+                        "all_results":  bot_ps["results"],
+                    }, room=human_ps["sid"])
+
+                if attempt < 5:
+                    socketio.sleep(random.uniform(2, 4))
+
+                match = active_matches.get(match_id)
+                if not match or match["ended"]:
+                    return
+
+            bot_ps["done"]       = True
+            bot_ps["eliminated"] = True
+
+            if human_ps and not human_ps.get("eliminated"):
+                human_ps["done"]  = True
+                human_ps["won"]   = True
+                human_ps["score"] = human_ps.get("streak", 0) * 100
+
+            _end_match(match_id)
+            return
+
 # ── Matchmaking helpers ───────────────────────────────────────────────────────
-def _try_match(mode):
-    queue = matchmaking_queues[mode]
-    print(f"[MATCH] Trying to match in {mode}. Queue: {[p['username'] for p in queue]}")
+def _try_match(mode, category):
+    queue = matchmaking_queues[mode][category]
+    print(f"[MATCH] Trying to match in {mode}/{category}. Queue: {[p['username'] for p in queue]}")
     if len(queue) < 2:
         return
 
@@ -391,7 +1078,7 @@ def _try_match(mode):
     for i in range(len(queue)):
         for j in range(i + 1, len(queue)):
             if queue[i]["user_id"] == queue[j]["user_id"]:
-                continue  # prevent same user from matching themselves
+                continue
             diff      = abs(queue[i]["elo"] - queue[j]["elo"])
             wait      = max(time.time() - queue[i]["joined_at"], time.time() - queue[j]["joined_at"])
             threshold = 200 + wait * 10
@@ -400,42 +1087,54 @@ def _try_match(mode):
                 best     = (i, j)
 
     if best is None:
-        return  # no eligible pair yet; bot fallback handles the timeout
+        return
 
     i, j = best
     p2 = queue.pop(j)
     p1 = queue.pop(i)
-    _create_match(p1, p2, mode)
+    _create_match(p1, p2, mode, category)
 
 
-def _maybe_bot_match(user_id, mode, joined_at):
+def _maybe_bot_match(user_id, mode, category, joined_at):
     """After BOT_WAIT_TIME seconds, pair the still-waiting player with a bot."""
     socketio.sleep(BOT_WAIT_TIME)
-    queue = matchmaking_queues[mode]
+    queue = matchmaking_queues[mode][category]
     for idx, p in enumerate(queue):
         if p["user_id"] == user_id and p["joined_at"] == joined_at:
             queue.pop(idx)
-            _create_bot_match(p, mode)
+            _create_bot_match(p, mode, category)
             return
 
 
-def _create_bot_match(player, mode):
+def _create_bot_match(player, mode, category="general"):
     """Pair a human player with the bot."""
-    bot      = {"user_id": BOT_USER_ID, "username": BOT_USERNAME,
-                "elo": BOT_ELO, "sid": None, "joined_at": time.time()}
-    word     = random.choice(WORDS).upper()
+    bot = {"user_id": BOT_USER_ID, "username": BOT_USERNAME,
+           "elo": BOT_ELO, "sid": None, "joined_at": time.time()}
+
+    cat_words = CATEGORY_WORDS.get(category, WORDS)
+    if mode == "streak":
+        words = [w.upper() for w in random.sample(cat_words, min(20, len(cat_words)))]
+        word  = words[0]
+    else:
+        words = None
+        word  = random.choice(cat_words).upper()
+
     match_id = f"m_{player['user_id']}_bot_{int(time.time()*1000)}"
     start    = time.time()
     duration = 120 if mode == "timed" else None
 
     match = {
-        "id":        match_id,
-        "word":      word,
-        "mode":      mode,
-        "start_time": start,
-        "duration":  duration,
-        "ended":     False,
-        "bot_match": True,
+        "id":                  match_id,
+        "word":                word,
+        "words":               words,
+        "current_round":       0,
+        "round_transitioning": False,
+        "mode":                mode,
+        "category":            category,
+        "start_time":          start,
+        "duration":            duration,
+        "ended":               False,
+        "bot_match":           True,
         "players": {
             str(player["user_id"]): _player_state(player, bot),
             BOT_USER_ID:            _player_state(bot, player),
@@ -448,6 +1147,7 @@ def _create_bot_match(player, mode):
     socketio.emit("match_found", {
         "match_id":     match_id,
         "mode":         mode,
+        "category":     category,
         "opponent":     BOT_USERNAME,
         "opponent_elo": BOT_ELO,
         "duration":     duration,
@@ -458,7 +1158,11 @@ def _create_bot_match(player, mode):
 
     if mode == "timed" and duration:
         socketio.start_background_task(_timed_end, match_id, duration)
-    socketio.start_background_task(_bot_play, match_id)
+
+    if mode == "streak":
+        socketio.start_background_task(_bot_play_streak, match_id)
+    else:
+        socketio.start_background_task(_bot_play, match_id)
 
 
 def _bot_play(match_id):
@@ -520,19 +1224,30 @@ def _bot_play(match_id):
                 _end_match(match_id)
             break
 
-def _create_match(p1, p2, mode):
-    word      = random.choice(WORDS).upper()
+def _create_match(p1, p2, mode, category="general"):
+    cat_words = CATEGORY_WORDS.get(category, WORDS)
+    if mode == "streak":
+        words = [w.upper() for w in random.sample(cat_words, min(20, len(cat_words)))]
+        word  = words[0]
+    else:
+        words = None
+        word  = random.choice(cat_words).upper()
+
     match_id  = f"m_{p1['user_id']}_{p2['user_id']}_{int(time.time()*1000)}"
     start     = time.time()
     duration  = 120 if mode == "timed" else None
 
     match = {
-        "id":         match_id,
-        "word":       word,
-        "mode":       mode,
-        "start_time": start,
-        "duration":   duration,
-        "ended":      False,
+        "id":                  match_id,
+        "word":                word,
+        "words":               words,
+        "current_round":       0,
+        "round_transitioning": False,
+        "mode":                mode,
+        "category":            category,
+        "start_time":          start,
+        "duration":            duration,
+        "ended":               False,
         "players": {
             str(p1["user_id"]): _player_state(p1, p2),
             str(p2["user_id"]): _player_state(p2, p1),
@@ -550,6 +1265,7 @@ def _create_match(p1, p2, mode):
         emit("match_found", {
             "match_id":     match_id,
             "mode":         mode,
+            "category":     category,
             "opponent":     opp["username"],
             "opponent_elo": opp["elo"],
             "duration":     duration,
@@ -573,6 +1289,11 @@ def _player_state(p, opp):
         "score":         0,
         "opponent_id":   opp["user_id"],
         "opponent_name": opp["username"],
+        # streak-mode fields (unused in other modes)
+        "streak":        0,
+        "eliminated":    False,
+        "round_done":    False,
+        "round_won":     False,
     }
 
 def _timed_end(match_id, duration):
@@ -595,7 +1316,23 @@ def _end_match(match_id):
 
     # Determine winner
     winner_id = None
-    if p1["won"] and not p2["won"]:
+    if match["mode"] == "streak":
+        p1_elim   = p1.get("eliminated", False)
+        p2_elim   = p2.get("eliminated", False)
+        p1_streak = p1.get("streak", 0)
+        p2_streak = p2.get("streak", 0)
+        p1["score"] = p1_streak * 100
+        p2["score"] = p2_streak * 100
+        if p1_elim and not p2_elim:
+            winner_id = p2["user_id"]
+        elif p2_elim and not p1_elim:
+            winner_id = p1["user_id"]
+        elif p1_streak > p2_streak:
+            winner_id = p1["user_id"]
+        elif p2_streak > p1_streak:
+            winner_id = p2["user_id"]
+        # else: draw (both eliminated on same round with equal streak)
+    elif p1["won"] and not p2["won"]:
         winner_id = p1["user_id"]
     elif p2["won"] and not p1["won"]:
         winner_id = p2["user_id"]
@@ -660,6 +1397,27 @@ def _end_match(match_id):
                 cur.close()
         except Exception as e:
             print(f"DB error in _end_match: {e}")
+    elif is_bot_match and match.get("forfeited"):
+        # Bot match forfeit — record the loss and ELO drop for the human player only
+        human_ps = next((p for p in plist if p["user_id"] != BOT_USER_ID), None)
+        if human_ps:
+            _, ld = elo_delta(BOT_ELO, human_ps["elo"])
+            try:
+                with get_db() as db:
+                    cur = db.cursor()
+                    cur.execute(
+                        """
+                        UPDATE players SET
+                            elo          = GREATEST(100, elo + %s),
+                            games_played = games_played + 1,
+                            losses       = losses + 1
+                        WHERE id = %s
+                        """,
+                        (ld, human_ps["user_id"]),
+                    )
+                    cur.close()
+            except Exception as e:
+                print(f"DB error in bot forfeit: {e}")
 
     for ps in plist:
         pid = ps["user_id"]
@@ -678,7 +1436,16 @@ def _end_match(match_id):
             "your_results":      ps["results"],
             "opponent_guesses":  opp["guesses"],
             "opponent_results":  opp["results"],
+            "your_streak":       ps.get("streak", 0),
+            "opponent_streak":   opp.get("streak", 0),
+            "mode":              match["mode"],
         }, room=ps["sid"])
+
+    # Keep players in the Socket.IO room for post-match chat (real matches only)
+    if not is_bot_match:
+        for ps in plist:
+            if ps["user_id"] != BOT_USER_ID:
+                post_match_rooms[ps["user_id"]] = match_id
 
     for ps in plist:
         player_to_match.pop(ps["user_id"], None)

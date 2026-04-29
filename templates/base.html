@@ -16,6 +16,11 @@
     .nav-elo { color: #ffd700; font-weight: 700; font-size: 0.9rem; }
     .btn-logout { color: #aaa; border: 1px solid #444; font-size: 0.85rem; }
     .btn-logout:hover { color: #fff; border-color: #fff; }
+    .btn-friends-nav {
+      color: #6c63ff; border: 1px solid #6c63ff66; font-size: 0.85rem;
+      background: #6c63ff11; font-weight: 700;
+    }
+    .btn-friends-nav:hover { background: #6c63ff33; color: #a89fff; border-color: #6c63ff; }
   </style>
 </head>
 <body>
@@ -25,6 +30,9 @@
   <div class="ms-auto d-flex align-items-center gap-3">
     <a href="/leaderboard" class="text-decoration-none" style="color:#aaa; font-size:0.9rem;">
       <i class="bi bi-trophy"></i> Leaderboard
+    </a>
+    <a href="/friends" class="btn btn-sm btn-friends-nav">
+      <i class="bi bi-people-fill"></i> Friends
     </a>
     <span class="nav-username">{{ session.get('username', '') }}</span>
     <a href="/logout" class="btn btn-sm btn-logout">Logout</a>

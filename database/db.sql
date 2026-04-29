@@ -34,7 +34,7 @@ CREATE TABLE `matches` (
   `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `player1_id`   BIGINT UNSIGNED NOT NULL,
   `player2_id`   BIGINT UNSIGNED NOT NULL,
-  `game_mode`    ENUM('classic','timed') NOT NULL DEFAULT 'classic',
+  `game_mode`    ENUM('classic','timed','streak') NOT NULL DEFAULT 'classic',
   `status`       ENUM('pending','active','completed') NOT NULL DEFAULT 'pending',
   `created_at`   TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `completed_at` TIMESTAMP(6) NULL DEFAULT NULL,

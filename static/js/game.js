@@ -9,8 +9,12 @@
     currentCol: 0,
     currentGuess: [],
     done: false,
+    waitingNextRound: false,
+    streak: 0,
+    round: 1,
     matchId: null,
     opponent: null,
+    isBotMatch: false,
     timerInterval: null,
     matchStartTime: null,
     duration: null,
@@ -103,7 +107,7 @@
 
   // ── Input handling ─────────────────────────────────────────────────────────
   function handleKey(key) {
-    if (state.done) return;
+    if (state.done || state.waitingNextRound) return;
     if (key === 'ENTER') {
       submitGuess();
     } else if (key === '⌫' || key === 'Backspace') {
@@ -252,8 +256,16 @@
     $('result-emoji').textContent = emojis[result] || '🎮';
     $('result-title').textContent = titles[result] || result;
     $('result-word').textContent  = `The word was: ${word}`;
-    $('your-score').textContent   = your_score;
-    $('opp-score').textContent    = opponent_score;
+
+    if (data.mode === 'streak') {
+      $('your-score').textContent      = data.your_streak ?? your_score;
+      $('opp-score').textContent       = data.opponent_streak ?? opponent_score;
+      $('your-score-label').textContent = 'Your Streak';
+      $('opp-score-label').textContent  = 'Opp Streak';
+    } else {
+      $('your-score').textContent = your_score;
+      $('opp-score').textContent  = opponent_score;
+    }
 
     const eloEl = $('elo-change-val');
     eloEl.textContent = (elo_change >= 0 ? '+' : '') + elo_change;
@@ -278,7 +290,15 @@
     }
 
     $('rematch-btn').href = `/game?mode=${MODE}`;
+
+    // Post-match chat (real matches only)
+    $('chat-messages').innerHTML = '';
+    $('post-match-chat').style.display = state.isBotMatch ? 'none' : 'flex';
+
     $('result-modal').style.display = 'flex';
+    if (!state.isBotMatch) {
+      setTimeout(() => $('chat-input').focus(), 100);
+    }
   }
 
   // ── Restore state after reconnect ─────────────────────────────────────────
@@ -301,6 +321,18 @@
   const socket = io();
 
   let botCountdownInterval = null;
+  let selectedCategory     = null;
+
+  const CAT_LABELS = {
+    general:   '🌐 General',
+    sports:    '⚽ Sports',
+    science:   '🔬 Science',
+    movies:    '🎬 Movies',
+    food:      '🍕 Food',
+    animals:   '🦁 Animals',
+    geography: '🗺️ Geography',
+    music:     '🎵 Music',
+  };
 
   function startBotCountdown(seconds) {
     const msgEl       = $('bot-fallback-msg');
@@ -318,21 +350,28 @@
     }, 1000);
   }
 
-  socket.on('connect', () => {
-    socket.emit('join_queue', { mode: MODE });
+  // Category button click → show spinner → join queue
+  document.querySelectorAll('.cat-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedCategory = btn.dataset.cat;
+      $('selected-cat-label').textContent = CAT_LABELS[selectedCategory] || selectedCategory;
+      $('category-step').style.display = 'none';
+      $('waiting-step').style.display  = 'flex';
+      socket.emit('join_queue', { mode: MODE, category: selectedCategory });
+    });
   });
 
   socket.on('queue_joined', () => {
-    // Start the bot-fallback countdown after 5s of waiting
     setTimeout(() => startBotCountdown(12), 5000);
   });
 
   socket.on('match_found', data => {
     clearInterval(botCountdownInterval);
-    state.matchId       = data.match_id;
-    state.opponent      = data.opponent;
+    state.matchId        = data.match_id;
+    state.opponent       = data.opponent;
+    state.isBotMatch     = data.opponent === 'WordBot';
     state.matchStartTime = data.start_time;
-    state.duration      = data.duration;
+    state.duration       = data.duration;
 
     $('waiting-overlay').style.display = 'none';
     $('game-ui').style.display         = 'block';
@@ -340,18 +379,26 @@
     $('opponent-name').textContent  = data.opponent;
     $('opp-name-label').textContent = data.opponent;
 
-    const badge = $('mode-badge');
+    const badge   = $('mode-badge');
+    const catLabel = CAT_LABELS[data.category] || data.category || '';
     if (MODE === 'timed') {
-      badge.textContent = 'Timed Mode';
+      badge.textContent = `Timed · ${catLabel}`;
       badge.classList.add('timed');
+    } else if (MODE === 'streak') {
+      badge.textContent = `Streak · ${catLabel}`;
     } else {
-      badge.textContent = 'Classic PvP';
+      badge.textContent = `Classic · ${catLabel}`;
     }
 
     buildBoard();
     buildOppBoard();
     buildKeyboard();
 
+    $('leave-btn').style.display = 'inline-block';
+
+    if (MODE === 'streak') {
+      $('streak-info').style.display = 'inline';
+    }
     if (data.duration) {
       startTimer(data.start_time, data.duration);
     }
@@ -373,6 +420,11 @@
     buildOppBoard();
     buildKeyboard();
 
+    $('leave-btn').style.display = 'inline-block';
+
+    if (MODE === 'streak') {
+      $('streak-info').style.display = 'inline';
+    }
     if (data.guesses && data.guesses.length) {
       restoreBoard(data.guesses, data.results);
     }
@@ -385,14 +437,21 @@
   });
 
   socket.on('guess_result', data => {
-    const { guess, result, guess_number, solved, game_over } = data;
+    const { guess, result, guess_number, solved, game_over, streak_round_won, streak } = data;
     const row = guess_number - 1;
 
     revealRow(row, guess, result, () => {
       updateKeyboard(guess, result);
       if (solved) {
         bounceRow(row);
-        showMessage('Brilliant!', 2500);
+        if (streak_round_won) {
+          state.streak           = streak || 0;
+          state.waitingNextRound = true;
+          $('streak-count').textContent = state.streak;
+          showMessage(`Round ${state.round} cleared! Streak: ${state.streak} 🔥`, 2200);
+        } else {
+          showMessage('Brilliant!', 2500);
+        }
       }
       if (game_over) {
         state.done = true;
@@ -403,6 +462,23 @@
     state.currentRow++;
     state.currentCol   = 0;
     state.currentGuess = [];
+  });
+
+  socket.on('streak_next_round', data => {
+    state.round            = data.round;
+    state.currentRow       = 0;
+    state.currentCol       = 0;
+    state.currentGuess     = [];
+    state.waitingNextRound = false;
+
+    // Clear board and keyboard for the new word
+    buildBoard();
+    buildOppBoard();
+    buildKeyboard();
+    Object.keys(keyState).forEach(k => delete keyState[k]);
+
+    $('round-num').textContent = data.round;
+    showMessage(`Round ${data.round}`, 1800);
   });
 
   socket.on('invalid_guess', data => {
@@ -426,8 +502,9 @@
   });
 
   socket.on('game_over', data => {
-    state.done = true;
-    // Small delay so last row animation can finish
+    state.done             = true;
+    state.waitingNextRound = false;
+    $('leave-btn').style.display = 'none';
     setTimeout(() => showResult(data), 1800);
   });
 
@@ -435,6 +512,74 @@
     showMessage(data.message || 'An error occurred');
   });
 
-  // ── Init: show waiting overlay immediately ─────────────────────────────────
+  // ── Post-match chat ───────────────────────────────────────────────────────
+  function sendChat() {
+    const input = $('chat-input');
+    const msg   = input.value.trim();
+    if (!msg) return;
+    socket.emit('chat_message', { message: msg });
+    input.value = '';
+  }
+
+  $('chat-send').addEventListener('click', sendChat);
+  $('chat-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') sendChat();
+  });
+
+  socket.on('chat_message', data => {
+    const isMe = data.username === INIT.username;
+    const el   = document.createElement('div');
+    el.className = 'chat-msg';
+    el.innerHTML =
+      `<span class="chat-name${isMe ? ' me' : ''}">${data.username}</span>${data.message}`;
+    const box = $('chat-messages');
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+  });
+
+  // ── Leave game ────────────────────────────────────────────────────────────
+  $('leave-btn').addEventListener('click', () => {
+    $('confirm-leave-modal').style.display = 'flex';
+  });
+
+  $('confirm-no').addEventListener('click', () => {
+    $('confirm-leave-modal').style.display = 'none';
+  });
+
+  $('confirm-yes').addEventListener('click', () => {
+    socket.emit('forfeit');
+    window.location.href = '/dashboard';
+  });
+
+  // ── Private match (challenge) handling ────────────────────────────────────
+  const urlParams     = new URLSearchParams(window.location.search);
+  const privateKey    = urlParams.get('private');
+
+  socket.on('private_match_waiting', data => {
+    $('selected-cat-label').textContent = '—';
+    $('default-wait-msg').textContent   = `Waiting for ${data.waiting_for} to connect…`;
+    clearInterval(botCountdownInterval);
+    $('bot-fallback-msg').style.display = 'none';
+  });
+
+  // ── Init: show category picker or private match wait ─────────────────────
   $('waiting-overlay').style.display = 'flex';
+
+  if (privateKey) {
+    $('category-step').style.display = 'none';
+    $('waiting-step').style.display  = 'flex';
+    $('default-wait-msg').textContent = 'Connecting to private match…';
+    $('bot-fallback-msg').style.display = 'none';
+
+    socket.on('connect', () => {
+      socket.emit('join_private_match', { match_key: privateKey });
+    });
+    // If socket already connected before listener registered
+    if (socket.connected) {
+      socket.emit('join_private_match', { match_key: privateKey });
+    }
+  } else {
+    $('category-step').style.display = 'flex';
+    $('waiting-step').style.display  = 'none';
+  }
 })();

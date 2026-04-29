@@ -89,6 +89,101 @@
   letter-spacing: 1px;
 }
 
+/* ── Stats charts ── */
+.stats-charts-section h3,
+.activity-section h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 16px;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.chart-card {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 14px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.chart-card-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #666;
+  align-self: flex-start;
+}
+
+.donut-wrap {
+  position: relative;
+  width: 160px;
+  height: 160px;
+}
+.donut-wrap canvas {
+  width: 160px !important;
+  height: 160px !important;
+}
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.donut-pct {
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #fff;
+  line-height: 1;
+}
+.donut-pct-label {
+  font-size: 0.65rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 0.8rem;
+  color: #aaa;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.leg-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.activity-section .chart-card {
+  width: 100%;
+  box-sizing: border-box;
+}
+.activity-section canvas {
+  width: 100% !important;
+  max-height: 200px;
+}
+
 /* ── Modes ── */
 .modes-section h3,
 .recent-section h3 {
@@ -102,7 +197,7 @@
 
 .modes-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
 }
 
@@ -133,14 +228,20 @@
   border-color: #ff6b6b;
   box-shadow: 0 8px 30px rgba(255,107,107,0.2);
 }
+.mode-streak {
+  border-color: #ffd70033;
+}
+.mode-streak:hover {
+  border-color: #ffd700;
+  box-shadow: 0 8px 30px rgba(255,215,0,0.15);
+}
 
 .mode-icon {
   font-size: 2rem;
   color: #6c63ff;
 }
-.mode-timed .mode-icon {
-  color: #ff6b6b;
-}
+.mode-timed .mode-icon   { color: #ff6b6b; }
+.mode-streak .mode-icon  { color: #ffd700; }
 .mode-card h4 {
   font-size: 1.1rem;
   font-weight: 900;
@@ -164,10 +265,8 @@
   border-radius: 20px;
   align-self: flex-start;
 }
-.mode-timed .mode-tag {
-  color: #ff6b6b;
-  background: #ff6b6b22;
-}
+.mode-timed .mode-tag   { color: #ff6b6b; background: #ff6b6b22; }
+.mode-streak .mode-tag  { color: #ffd700; background: #ffd70022; }
 
 /* ── Recent matches ── */
 .match-list {
@@ -216,7 +315,38 @@
   white-space: nowrap;
 }
 
+/* ── Challenge notification toast (received while on dashboard) ── */
+.challenge-toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: #1a1a2e; border: 1px solid #6c63ff55;
+  border-radius: 14px; padding: 18px 20px; min-width: 280px; max-width: 340px;
+  z-index: 3000; box-shadow: 0 8px 40px rgba(108,99,255,0.25);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.toast-header {
+  font-size: 0.95rem; font-weight: 700; color: #e8e8e8;
+  display: flex; align-items: center; gap: 8px;
+}
+.toast-header i { color: #6c63ff; }
+.toast-details { font-size: 0.85rem; color: #888; }
+.toast-actions { display: flex; gap: 8px; }
+.btn-toast-accept {
+  background: #6c63ff; color: #fff; border: none;
+  border-radius: 8px; padding: 7px 16px; cursor: pointer;
+  font-size: 0.85rem; font-weight: 700; flex: 1; transition: background 0.2s;
+}
+.btn-toast-accept:hover { background: #5a52e0; }
+.btn-toast-decline {
+  background: transparent; color: #888; border: 1px solid #333;
+  border-radius: 8px; padding: 7px 14px; cursor: pointer; font-size: 0.85rem;
+}
+.toast-timer { font-size: 0.72rem; color: #444; }
+
+@media (max-width: 860px) {
+  .modes-grid { grid-template-columns: 1fr 1fr; }
+}
 @media (max-width: 600px) {
-  .modes-grid { grid-template-columns: 1fr; }
-  .stats-row  { gap: 20px; }
+  .modes-grid   { grid-template-columns: 1fr; }
+  .charts-grid  { grid-template-columns: 1fr; }
+  .stats-row    { gap: 20px; }
 }

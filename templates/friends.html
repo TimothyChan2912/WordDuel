@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+{% block title %} — Friends{% endblock %}
+{% block extra_css %}
+<link href="{{ url_for('static', filename='css/friends.css') }}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="friends-wrapper">
+
+  <div class="friends-header">
+    <h2><i class="bi bi-people-fill"></i> Friends</h2>
+  </div>
+
+  <!-- Add Friend -->
+  <div class="friends-card">
+    <div class="card-label">Add Friend</div>
+    <div class="add-friend-row">
+      <input id="friend-search" type="text" placeholder="Enter exact username…" autocomplete="off">
+      <button id="add-friend-btn" class="btn-add-friend">
+        <i class="bi bi-person-plus-fill"></i> Add Friend
+      </button>
+    </div>
+    <div id="add-friend-result" class="add-friend-result" style="display:none;"></div>
+  </div>
+
+  <!-- Pending Requests -->
+  <div id="incoming-card" class="friends-card" style="display:none;">
+    <div class="card-label">Incoming Requests <span id="req-count" class="req-badge"></span></div>
+    <div id="incoming-list" class="friend-list"></div>
+  </div>
+
+  <!-- Outgoing Requests -->
+  <div id="outgoing-card" class="friends-card" style="display:none;">
+    <div class="card-label">Sent Requests</div>
+    <div id="outgoing-list" class="friend-list"></div>
+  </div>
+
+  <!-- Friends list -->
+  <div class="friends-card">
+    <div class="card-label">My Friends <span id="friends-count" class="friends-count-badge"></span></div>
+    <div id="friends-empty" class="friends-empty" style="display:none;">
+      No friends yet — search for players above to add them!
+    </div>
+    <div id="friends-list" class="friend-list"></div>
+  </div>
+
+</div>
+
+<!-- Challenge modal -->
+<div id="challenge-modal" class="challenge-modal" style="display:none;">
+  <div class="challenge-card">
+    <h3>Challenge <span id="challenge-modal-name">—</span></h3>
+    <div class="challenge-field">
+      <label>Mode</label>
+      <div class="mode-radio-group">
+        <label><input type="radio" name="ch-mode" value="classic" checked> Classic</label>
+        <label><input type="radio" name="ch-mode" value="timed">   Timed</label>
+        <label><input type="radio" name="ch-mode" value="streak">  Streak</label>
+      </div>
+    </div>
+    <div class="challenge-field">
+      <label>Category</label>
+      <select id="ch-category">
+        <option value="general">🌐 General</option>
+        <option value="sports">⚽ Sports</option>
+        <option value="science">🔬 Science</option>
+        <option value="movies">🎬 Movies</option>
+        <option value="food">🍕 Food</option>
+        <option value="animals">🦁 Animals</option>
+        <option value="geography">🗺️ Geography</option>
+        <option value="music">🎵 Music</option>
+      </select>
+    </div>
+    <div class="challenge-actions">
+      <button id="ch-cancel" class="btn-ch-cancel">Cancel</button>
+      <button id="ch-send"   class="btn-ch-send">Send Challenge</button>
+    </div>
+  </div>
+</div>
+
+<!-- Challenge received toast -->
+<div id="challenge-toast" class="challenge-toast" style="display:none;">
+  <div class="toast-header">
+    <i class="bi bi-controller"></i>
+    <strong id="toast-challenger">—</strong> challenged you!
+  </div>
+  <div id="toast-details" class="toast-details"></div>
+  <div class="toast-actions">
+    <button id="toast-decline" class="btn-toast-decline">Decline</button>
+    <button id="toast-accept"  class="btn-toast-accept">Accept</button>
+  </div>
+  <div id="toast-timer" class="toast-timer"></div>
+</div>
+
+<!-- Generic feedback toast -->
+<div id="generic-toast" class="generic-toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const socket          = io();
+  let challengeTarget   = null;
+  let activeChallengeId = null;
+  let toastDismissTimer = null;
+
+  const RANK_THRESHOLDS = [
+    [1600, 'Master',   '#ff6ec7'],
+    [1400, 'Diamond',  '#b9f2ff'],
+    [1200, 'Platinum', '#a0e8d0'],
+    [1000, 'Gold',     '#ffd700'],
+    [ 800, 'Silver',   '#c0c0c0'],
+    [   0, 'Bronze',   '#cd7f32'],
+  ];
+  function getRank(elo) {
+    for (const [t, name, color] of RANK_THRESHOLDS)
+      if (elo >= t) return { name, color };
+    return { name: 'Bronze', color: '#cd7f32' };
+  }
+
+  // ── Load & render ──────────────────────────────────────────────────────────
+  async function loadFriends() {
+    try {
+      const res  = await fetch('/api/friends');
+      const data = await res.json();
+      renderIncoming(data.incoming || []);
+      renderOutgoing(data.outgoing || []);
+      renderFriends(data.friends  || []);
+    } catch (e) { console.error(e); }
+  }
+
+  function renderIncoming(list) {
+    const card = document.getElementById('incoming-card');
+    const ul   = document.getElementById('incoming-list');
+    const badge = document.getElementById('req-count');
+    if (!list.length) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    badge.textContent  = list.length;
+    ul.innerHTML = list.map(u => `
+      <div class="friend-row" data-id="${u.id}">
+        <div class="friend-avatar">${u.username[0].toUpperCase()}</div>
+        <div class="friend-info">
+          <span class="friend-name">${u.username}</span>
+          <span class="friend-elo">${u.elo} ELO</span>
+        </div>
+        <div class="friend-actions">
+          <button class="btn-accept" onclick="acceptRequest(${u.id})">Accept</button>
+          <button class="btn-decline" onclick="declineRequest(${u.id})">Decline</button>
+        </div>
+      </div>`).join('');
+  }
+
+  function renderOutgoing(list) {
+    const card = document.getElementById('outgoing-card');
+    const ul   = document.getElementById('outgoing-list');
+    if (!list.length) { card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    ul.innerHTML = list.map(u => `
+      <div class="friend-row" data-id="${u.id}">
+        <div class="friend-avatar">${u.username[0].toUpperCase()}</div>
+        <div class="friend-info">
+          <span class="friend-name">${u.username}</span>
+          <span class="friend-elo">${u.elo} ELO</span>
+        </div>
+        <div class="friend-actions">
+          <span class="tag-pending">Pending…</span>
+        </div>
+      </div>`).join('');
+  }
+
+  function renderFriends(list) {
+    const ul    = document.getElementById('friends-list');
+    const empty = document.getElementById('friends-empty');
+    const badge = document.getElementById('friends-count');
+    badge.textContent = list.length || '';
+    if (!list.length) { empty.style.display = 'block'; ul.innerHTML = ''; return; }
+    empty.style.display = 'none';
+    ul.innerHTML = list.map(f => {
+      const { name: rankName, color: rankColor } = getRank(f.elo);
+      const dot = f.online
+        ? `<span class="online-dot online-yes" title="Online"></span>`
+        : `<span class="online-dot online-no"  title="Offline"></span>`;
+      const challengeBtn = f.online
+        ? `<button class="btn-challenge" onclick="openChallengeModal(${f.id},'${f.username.replace(/'/g,"\\'")}')">
+             <i class="bi bi-controller"></i> Challenge
+           </button>`
+        : `<span class="tag-offline">Offline</span>`;
+      return `
+        <div class="friend-row">
+          <div class="friend-avatar">${f.username[0].toUpperCase()}</div>
+          <div class="friend-info">
+            <div class="friend-name-row">
+              ${dot}
+              <span class="friend-name">${f.username}</span>
+              <span class="rank-badge" style="color:${rankColor};border-color:${rankColor}33;background:${rankColor}11">${rankName}</span>
+            </div>
+            <span class="friend-elo">${f.elo} ELO</span>
+          </div>
+          <div class="friend-actions">
+            ${challengeBtn}
+            <button class="btn-remove" onclick="removeFriend(${f.id})">Remove</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── Add Friend ─────────────────────────────────────────────────────────────
+  const searchInput    = document.getElementById('friend-search');
+  const addBtn         = document.getElementById('add-friend-btn');
+  const addResultEl    = document.getElementById('add-friend-result');
+
+  async function doAddFriend() {
+    const q = searchInput.value.trim();
+    if (!q) return;
+    addBtn.disabled = true;
+    addBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Searching…';
+    addResultEl.style.display = 'none';
+
+    try {
+      const res   = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+      const data  = await res.json();
+      const users = (data.users || []).filter(u => u.username.toLowerCase() === q.toLowerCase());
+
+      if (!users.length) {
+        showAddResult('error', `No player found with username "${q}".`);
+      } else {
+        const u  = users[0];
+        const fs = u.friend_status, rs = u.reverse_status;
+        if (fs === 'accepted') {
+          showAddResult('info', `You're already friends with <strong>${u.username}</strong>.`);
+        } else if (fs === 'pending') {
+          showAddResult('info', `Friend request already sent to <strong>${u.username}</strong>.`);
+        } else if (rs === 'pending') {
+          showAddResult('info', `<strong>${u.username}</strong> already sent you a request — accept it below!`);
+          loadFriends();
+        } else {
+          await sendRequest(u.id);
+          showAddResult('success', `Friend request sent to <strong>${u.username}</strong>!`);
+          searchInput.value = '';
+        }
+      }
+    } catch (e) {
+      showAddResult('error', 'Something went wrong. Try again.');
+    }
+
+    addBtn.disabled = false;
+    addBtn.innerHTML = '<i class="bi bi-person-plus-fill"></i> Add Friend';
+  }
+
+  function showAddResult(type, html) {
+    addResultEl.className = `add-friend-result result-${type}`;
+    addResultEl.innerHTML = html;
+    addResultEl.style.display = 'block';
+  }
+
+  addBtn.addEventListener('click', doAddFriend);
+  searchInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAddFriend(); });
+
+  // ── Friend CRUD ────────────────────────────────────────────────────────────
+  async function sendRequest(userId) {
+    await fetch('/api/friends/request', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: userId}),
+    });
+    loadFriends();
+  }
+
+  async function acceptRequest(userId) {
+    await fetch('/api/friends/accept', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: userId}),
+    });
+    loadFriends();
+  }
+
+  async function declineRequest(userId) {
+    await fetch('/api/friends/decline', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: userId}),
+    });
+    loadFriends();
+  }
+
+  async function removeFriend(userId) {
+    if (!confirm('Remove this friend?')) return;
+    await fetch('/api/friends/remove', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({user_id: userId}),
+    });
+    loadFriends();
+  }
+
+  // ── Challenge modal ────────────────────────────────────────────────────────
+  function openChallengeModal(friendId, friendName) {
+    challengeTarget = {id: friendId, name: friendName};
+    document.getElementById('challenge-modal-name').textContent = friendName;
+    document.getElementById('challenge-modal').style.display = 'flex';
+  }
+
+  document.getElementById('ch-cancel').addEventListener('click', () => {
+    document.getElementById('challenge-modal').style.display = 'none';
+    challengeTarget = null;
+  });
+
+  document.getElementById('ch-send').addEventListener('click', () => {
+    if (!challengeTarget) return;
+    const mode     = document.querySelector('input[name="ch-mode"]:checked').value;
+    const category = document.getElementById('ch-category').value;
+    document.getElementById('challenge-modal').style.display = 'none';
+    socket.emit('challenge_friend', { friend_id: challengeTarget.id, mode, category });
+  });
+
+  // ── Socket: challenge events ───────────────────────────────────────────────
+  socket.on('challenge_sent', data => {
+    showToast(`Challenge sent to ${data.friend_name}!`,
+      `<a href="/game?mode=${data.mode}&private=${data.match_key}" class="btn-go">Go to Game →</a>`,
+      30000);
+  });
+
+  socket.on('challenge_error', data => {
+    showToast('Challenge Failed', data.message, 4000);
+  });
+
+  socket.on('challenge_accepted_ack', data => {
+    window.location.href = `/game?mode=${data.mode}&private=${data.match_key}`;
+  });
+
+  socket.on('challenge_declined', data => {
+    showToast('Declined', `${data.declined_by} declined your challenge.`, 5000);
+  });
+
+  socket.on('challenge_received', data => {
+    activeChallengeId = data.challenge_id;
+    document.getElementById('toast-challenger').textContent = data.challenger_name;
+    document.getElementById('toast-details').textContent =
+      `${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)} · ${data.category}`;
+    document.getElementById('challenge-toast').style.display = 'block';
+    clearTimeout(toastDismissTimer);
+    let sec = 30;
+    const timerEl = document.getElementById('toast-timer');
+    timerEl.textContent = `Auto-dismisses in ${sec}s`;
+    const iv = setInterval(() => {
+      sec--;
+      timerEl.textContent = `Auto-dismisses in ${sec}s`;
+      if (sec <= 0) { clearInterval(iv); dismissToast(); }
+    }, 1000);
+    toastDismissTimer = iv;
+  });
+
+  socket.on('friend_request_received', data => {
+    showToast('Friend Request', `${data.from_username} sent you a friend request!`, 6000);
+    loadFriends();
+  });
+
+  document.getElementById('toast-accept').addEventListener('click', () => {
+    if (!activeChallengeId) return;
+    socket.emit('accept_challenge', {challenge_id: activeChallengeId});
+    socket.once('redirect_to_game', data => {
+      window.location.href = `/game?mode=${data.mode}&private=${data.match_key}`;
+    });
+    dismissToast();
+  });
+
+  document.getElementById('toast-decline').addEventListener('click', () => {
+    if (!activeChallengeId) return;
+    socket.emit('decline_challenge', {challenge_id: activeChallengeId});
+    dismissToast();
+  });
+
+  function dismissToast() {
+    clearTimeout(toastDismissTimer);
+    document.getElementById('challenge-toast').style.display = 'none';
+    activeChallengeId = null;
+  }
+
+  function showToast(title, bodyHtml, duration = 4000) {
+    const t = document.getElementById('generic-toast');
+    t.innerHTML = `<strong>${title}</strong><div class="gt-body">${bodyHtml}</div>`;
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), duration);
+  }
+
+  loadFriends();
+</script>
+{% endblock %}
