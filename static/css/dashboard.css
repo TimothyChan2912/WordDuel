@@ -342,11 +342,53 @@
 }
 .toast-timer { font-size: 0.72rem; color: #444; }
 
+/* ── Per-Mode ELO section ── */
+.mode-elo-section h3 { font-weight: 900; color: #fff; margin-bottom: 16px; }
+
+.mode-elo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.mode-elo-card {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 14px;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  transition: border-color 0.2s;
+}
+.mode-elo-card:hover { border-color: #6c63ff66; }
+
+.mode-elo-icon {
+  font-size: 1.6rem;
+  color: #6c63ff;
+  line-height: 1;
+}
+.mode-elo-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #666;
+}
+.mode-elo-value {
+  font-size: 1.9rem;
+  font-weight: 900;
+  color: #ffd700;
+  line-height: 1;
+}
+
 @media (max-width: 860px) {
   .modes-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 600px) {
-  .modes-grid   { grid-template-columns: 1fr; }
-  .charts-grid  { grid-template-columns: 1fr; }
-  .stats-row    { gap: 20px; }
+  .modes-grid     { grid-template-columns: 1fr; }
+  .charts-grid    { grid-template-columns: 1fr; }
+  .stats-row      { gap: 20px; }
+  .mode-elo-grid  { grid-template-columns: 1fr; }
 }

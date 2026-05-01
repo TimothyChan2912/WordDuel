@@ -29,7 +29,7 @@ body {
 .overlay-panel {
   width: 42%;
   flex-shrink: 0;
-  background: linear-gradient(135deg, #f75959, #f35587);
+  background: linear-gradient(135deg, #2a2a4a, #6c63ff);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -152,12 +152,12 @@ body {
 
 .form-container input:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(243, 85, 135, 0.35);
+  box-shadow: 0 0 0 2px #6c63ff;
 }
 
 .btn-submit {
   width: 100%;
-  background: linear-gradient(135deg, #f75959, #f35587);
+  background: linear-gradient(135deg, #2a2a4a, #6c63ff);
   border: none;
   border-radius: 22px;
   color: #fff;
@@ -185,5 +185,5 @@ body {
 }
 
 .forgot-link:hover {
-  color: #f35587;
+  color: #6c63ff;
 }

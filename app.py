@@ -15,6 +15,9 @@ BOT_USERNAME  = "WordBot"
 BOT_ELO       = 1000
 BOT_DELAY_MIN = 3        # min seconds between bot guesses
 BOT_DELAY_MAX = 8        # max seconds between bot guesses
+STREAK_DURATION = 180    # seconds for a streak match (3 minutes)
+
+ELO_COL = {"classic": "elo", "timed": "elo_timed", "streak": "elo_streak"}
 
 load_dotenv()
 
@@ -96,6 +99,12 @@ def get_rank(elo):
     if elo < 1600:  return "Diamond",  "#b9f2ff"
     return           "Master",          "#ff6ec7"
 
+def get_daily_word():
+    rng = random.Random(date.today().toordinal())
+    category = rng.choice(CATEGORIES)
+    word = rng.choice(CATEGORY_WORDS.get(category, WORDS)).upper()
+    return word, category
+
 def _remove_from_queue(user_id):
     for mode in matchmaking_queues:
         for cat in matchmaking_queues[mode]:
@@ -168,7 +177,7 @@ def dashboard():
         with get_db() as db:
             cur = db.cursor(dictionary=True)
             cur.execute(
-                "SELECT id, username, elo, wins, losses, games_played FROM players WHERE id = %s",
+                "SELECT id, username, elo, elo_timed, elo_streak, wins, losses, games_played FROM players WHERE id = %s",
                 (user_id,),
             )
             player = cur.fetchone()
@@ -241,14 +250,20 @@ def dashboard():
             "wins":  int(row.get("wins",  0) or 0),
         })
 
-    rank_name, rank_color = get_rank(player["elo"] if player else 1000)
+    elo_classic = (player["elo"]        if player else None) or 1000
+    elo_timed   = (player["elo_timed"]  if player else None) or 1000
+    elo_streak  = (player["elo_streak"] if player else None) or 1000
+    rank_name,        rank_color        = get_rank(elo_classic)
+    rank_timed_name,  rank_timed_color  = get_rank(elo_timed)
+    rank_streak_name, rank_streak_color = get_rank(elo_streak)
     return render_template(
         "dashboard.html",
         player=player,
         recent_matches=recent,
         user_id=user_id,
-        rank_name=rank_name,
-        rank_color=rank_color,
+        rank_name=rank_name,               rank_color=rank_color,
+        rank_timed_name=rank_timed_name,   rank_timed_color=rank_timed_color,
+        rank_streak_name=rank_streak_name, rank_streak_color=rank_streak_color,
         mode_stats=mode_stats,
         activity=activity,
     )
@@ -265,15 +280,19 @@ def game():
 @app.route("/leaderboard")
 @login_required
 def leaderboard():
+    mode = request.args.get("mode", "classic")
+    if mode not in ELO_COL:
+        mode = "classic"
+    col = ELO_COL[mode]
     try:
         with get_db() as db:
             cur = db.cursor(dictionary=True)
             cur.execute(
-                """
-                SELECT username, elo, wins, losses, games_played,
+                f"""
+                SELECT username, elo, elo_timed, elo_streak, wins, losses, games_played,
                        ROUND(wins / NULLIF(games_played, 0) * 100, 1) AS win_rate
                 FROM   players
-                ORDER  BY elo DESC
+                ORDER  BY {col} DESC
                 LIMIT  50
                 """
             )
@@ -284,19 +303,154 @@ def leaderboard():
         players = []
 
     for i, p in enumerate(players):
-        p["rank_name"], p["rank_color"] = get_rank(p["elo"])
+        display_elo = p[col] or 1000
+        p["display_elo"] = display_elo
+        p["rank_name"], p["rank_color"] = get_rank(display_elo)
         p["position"] = i + 1
 
     return render_template(
         "leaderboard.html",
         players=players,
         current_user=session["username"],
+        mode=mode,
     )
 
 @app.route("/friends")
 @login_required
 def friends():
     return render_template("friends.html")
+
+
+@app.route("/daily")
+@login_required
+def daily():
+    user_id = session["user_id"]
+    today   = date.today()
+    word, category = get_daily_word()
+    puzzle_number = today.toordinal() - date(2024, 1, 1).toordinal() + 1
+
+    my_row = None
+    try:
+        with get_db() as db:
+            cur = db.cursor(dictionary=True)
+            cur.execute(
+                "SELECT * FROM daily_results WHERE player_id=%s AND date=%s",
+                (user_id, today),
+            )
+            my_row = cur.fetchone()
+            cur.close()
+    except Exception as e:
+        print(e)
+
+    prior_guesses = []
+    prior_results = []
+    if my_row and my_row.get("guesses"):
+        prior_guesses = my_row["guesses"].split(",")
+        prior_results = [check_guess(g, word) for g in prior_guesses]
+
+    completed   = bool(my_row and (my_row["solved"] or my_row["guess_count"] >= 6))
+    reveal_word = word if completed else None
+    hint_letter = word[0] if (len(prior_guesses) >= 3 and not completed) else None
+
+    lb = []
+    try:
+        with get_db() as db:
+            cur = db.cursor(dictionary=True)
+            cur.execute(
+                """SELECT p.username, dr.solved, dr.guess_count, dr.completed_at
+                   FROM daily_results dr
+                   JOIN players p ON dr.player_id = p.id
+                   WHERE dr.date = %s
+                   ORDER BY dr.solved DESC, dr.guess_count ASC, dr.completed_at ASC
+                   LIMIT 50""",
+                (today,),
+            )
+            lb = cur.fetchall()
+            cur.close()
+    except Exception as e:
+        print(e)
+
+    return render_template(
+        "daily.html",
+        today=today.strftime("%B %d, %Y"),
+        puzzle_number=puzzle_number,
+        category=category,
+        prior_guesses=prior_guesses,
+        prior_results=prior_results,
+        completed=completed,
+        reveal_word=reveal_word,
+        hint_letter=hint_letter,
+        lb=lb,
+        username=session["username"],
+    )
+
+
+@app.route("/api/daily/guess", methods=["POST"])
+@login_required
+def api_daily_guess():
+    user_id = session["user_id"]
+    today   = date.today()
+    word = get_daily_word()[0]
+
+    data  = request.get_json() or {}
+    guess = data.get("guess", "").upper().strip()
+
+    if len(guess) != 5:
+        return jsonify({"error": "Word must be 5 letters"}), 400
+    if guess.lower() not in VALID_WORDS:
+        return jsonify({"error": "Not in word list"}), 400
+
+    try:
+        with get_db() as db:
+            cur = db.cursor(dictionary=True)
+            cur.execute(
+                "SELECT * FROM daily_results WHERE player_id=%s AND date=%s",
+                (user_id, today),
+            )
+            row = cur.fetchone()
+            cur.close()
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Database error"}), 500
+
+    if row and (row["solved"] or row["guess_count"] >= 6):
+        return jsonify({"error": "Already completed today's challenge"}), 400
+
+    result      = check_guess(guess, word)
+    won         = all(r == "correct" for r in result)
+    prev_list   = row["guesses"].split(",") if (row and row["guesses"]) else []
+    prev_list.append(guess)
+    guess_count = len(prev_list)
+    completed   = won or guess_count >= 6
+
+    try:
+        with get_db() as db:
+            cur = db.cursor()
+            if row:
+                cur.execute(
+                    "UPDATE daily_results SET guesses=%s, guess_count=%s, solved=%s, "
+                    "completed_at=NOW() WHERE player_id=%s AND date=%s",
+                    (",".join(prev_list), guess_count, 1 if won else 0, user_id, today),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO daily_results (player_id, date, solved, guess_count, guesses, completed_at) "
+                    "VALUES (%s, %s, %s, %s, %s, NOW())",
+                    (user_id, today, 1 if won else 0, guess_count, ",".join(prev_list)),
+                )
+            cur.close()
+    except Exception as e:
+        print(e)
+        return jsonify({"error": "Database error"}), 500
+
+    return jsonify({
+        "result":       result,
+        "won":          won,
+        "guess_number": guess_count,
+        "completed":    completed,
+        "word":         word if completed else None,
+        "hint_letter":  word[0] if (guess_count >= 3 and not completed) else None,
+    })
 
 
 # ── Friends HTTP API ─────────────────────────────────────────────────────────
@@ -690,13 +844,14 @@ def on_join_private_match(data):
         emit("error", {"message": "Not authorized for this match"})
         return
 
+    match_mode = lobby["mode"]
     try:
         with get_db() as db:
             cur = db.cursor(dictionary=True)
-            cur.execute("SELECT elo FROM players WHERE id=%s", (user_id,))
+            cur.execute("SELECT elo, elo_timed, elo_streak FROM players WHERE id=%s", (user_id,))
             row = cur.fetchone()
             cur.close()
-        elo = row["elo"] if row else 1000
+        elo = (row[ELO_COL.get(match_mode, "elo")] if row else None) or 1000
     except Exception:
         elo = 1000
 
@@ -744,10 +899,10 @@ def on_join_queue(data):
     try:
         with get_db() as db:
             cur = db.cursor(dictionary=True)
-            cur.execute("SELECT elo FROM players WHERE id = %s", (user_id,))
+            cur.execute("SELECT elo, elo_timed, elo_streak FROM players WHERE id = %s", (user_id,))
             row = cur.fetchone()
             cur.close()
-        elo = row["elo"] if row else 1000
+        elo = (row[ELO_COL.get(mode, "elo")] if row else None) or 1000
     except Exception:
         elo = 1000
 
@@ -1121,7 +1276,7 @@ def _create_bot_match(player, mode, category="general"):
 
     match_id = f"m_{player['user_id']}_bot_{int(time.time()*1000)}"
     start    = time.time()
-    duration = 120 if mode == "timed" else None
+    duration = 120 if mode == "timed" else (STREAK_DURATION if mode == "streak" else None)
 
     match = {
         "id":                  match_id,
@@ -1156,7 +1311,7 @@ def _create_bot_match(player, mode, category="general"):
 
     print(f"[BOT] Created bot match {match_id} for {player['username']}")
 
-    if mode == "timed" and duration:
+    if mode in ("timed", "streak") and duration:
         socketio.start_background_task(_timed_end, match_id, duration)
 
     if mode == "streak":
@@ -1235,7 +1390,7 @@ def _create_match(p1, p2, mode, category="general"):
 
     match_id  = f"m_{p1['user_id']}_{p2['user_id']}_{int(time.time()*1000)}"
     start     = time.time()
-    duration  = 120 if mode == "timed" else None
+    duration  = 120 if mode == "timed" else (STREAK_DURATION if mode == "streak" else None)
 
     match = {
         "id":                  match_id,
@@ -1272,7 +1427,7 @@ def _create_match(p1, p2, mode, category="general"):
             "start_time":   start,
         }, room=p["sid"])
 
-    if mode == "timed" and duration:
+    if mode in ("timed", "streak") and duration:
         socketio.start_background_task(_timed_end, match_id, duration)
 
 def _player_state(p, opp):
@@ -1374,14 +1529,15 @@ def _end_match(match_id):
                     "VALUES (%s, %s, %s, %s)",
                     (db_match_id, winner_id, p1["score"], p2["score"]),
                 )
+                col = ELO_COL.get(match["mode"], "elo")
                 for ps in plist:
                     pid       = ps["user_id"]
                     is_winner = pid == winner_id
                     is_draw   = winner_id is None
                     cur.execute(
-                        """
+                        f"""
                         UPDATE players SET
-                            elo          = GREATEST(100, elo + %s),
+                            {col}        = GREATEST(100, {col} + %s),
                             games_played = games_played + 1,
                             wins         = wins   + %s,
                             losses       = losses + %s
@@ -1405,10 +1561,11 @@ def _end_match(match_id):
             try:
                 with get_db() as db:
                     cur = db.cursor()
+                    col = ELO_COL.get(match["mode"], "elo")
                     cur.execute(
-                        """
+                        f"""
                         UPDATE players SET
-                            elo          = GREATEST(100, elo + %s),
+                            {col}        = GREATEST(100, {col} + %s),
                             games_played = games_played + 1,
                             losses       = losses + 1
                         WHERE id = %s

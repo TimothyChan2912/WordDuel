@@ -41,6 +41,31 @@
     </div>
   </div>
 
+  <!-- Per-Mode ELO -->
+  <div class="mode-elo-section">
+    <h3>ELO by Mode</h3>
+    <div class="mode-elo-grid">
+      <div class="mode-elo-card">
+        <div class="mode-elo-icon"><i class="bi bi-controller"></i></div>
+        <div class="mode-elo-name">Classic</div>
+        <div class="mode-elo-value">{{ player.elo }}</div>
+        <span class="rank-badge" style="background:{{ rank_color }}22; color:{{ rank_color }}; border:1px solid {{ rank_color }};">{{ rank_name }}</span>
+      </div>
+      <div class="mode-elo-card">
+        <div class="mode-elo-icon"><i class="bi bi-stopwatch"></i></div>
+        <div class="mode-elo-name">Timed</div>
+        <div class="mode-elo-value">{{ player.elo_timed }}</div>
+        <span class="rank-badge" style="background:{{ rank_timed_color }}22; color:{{ rank_timed_color }}; border:1px solid {{ rank_timed_color }};">{{ rank_timed_name }}</span>
+      </div>
+      <div class="mode-elo-card">
+        <div class="mode-elo-icon"><i class="bi bi-lightning-fill"></i></div>
+        <div class="mode-elo-name">Streak</div>
+        <div class="mode-elo-value">{{ player.elo_streak }}</div>
+        <span class="rank-badge" style="background:{{ rank_streak_color }}22; color:{{ rank_streak_color }}; border:1px solid {{ rank_streak_color }};">{{ rank_streak_name }}</span>
+      </div>
+    </div>
+  </div>
+
   <!-- Stats Charts -->
   <div class="stats-charts-section">
     <h3>Performance</h3>
@@ -70,9 +95,9 @@
         </div>
       </div>
 
-      <!-- Classic vs Timed -->
+      <!-- Games by Mode -->
       <div class="chart-card">
-        <div class="chart-card-title">Classic vs Timed</div>
+        <div class="chart-card-title">Games by Mode</div>
         <canvas id="mode-chart"></canvas>
       </div>
 
@@ -185,22 +210,22 @@
     }
   });
 
-  // ── Classic vs Timed ──────────────────────────────────────────────────────
+  // ── Games by Mode ─────────────────────────────────────────────────────────
   const modeStats = {{ mode_stats | tojson }};
   new Chart(document.getElementById('mode-chart'), {
     type: 'bar',
     data: {
-      labels: ['Classic', 'Timed'],
+      labels: ['Classic', 'Timed', 'Streak'],
       datasets: [
         {
           label: 'Wins',
-          data: [modeStats.classic?.wins || 0, modeStats.timed?.wins || 0],
+          data: [modeStats.classic?.wins || 0, modeStats.timed?.wins || 0, modeStats.streak?.wins || 0],
           backgroundColor: '#538d4e',
           borderRadius: 5,
         },
         {
           label: 'Losses',
-          data: [modeStats.classic?.losses || 0, modeStats.timed?.losses || 0],
+          data: [modeStats.classic?.losses || 0, modeStats.timed?.losses || 0, modeStats.streak?.losses || 0],
           backgroundColor: '#ff6b6b',
           borderRadius: 5,
         }

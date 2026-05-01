@@ -16,6 +16,27 @@ ALTER TABLE `match_results`
   ADD COLUMN IF NOT EXISTS `player1_score` INT UNSIGNED NOT NULL DEFAULT 0,
   ADD COLUMN IF NOT EXISTS `player2_score` INT UNSIGNED NOT NULL DEFAULT 0;
 
+-- Per-mode ELO columns (run once on existing installs)
+ALTER TABLE `players`
+  ADD COLUMN `elo_timed`  INT UNSIGNED NOT NULL DEFAULT 1000,
+  ADD COLUMN `elo_streak` INT UNSIGNED NOT NULL DEFAULT 1000;
+ALTER TABLE `players`
+  ADD INDEX `idx_elo_timed`  (`elo_timed`),
+  ADD INDEX `idx_elo_streak` (`elo_streak`);
+
+-- Daily challenge results (safe to re-run)
+CREATE TABLE IF NOT EXISTS `daily_results` (
+  `player_id`    BIGINT UNSIGNED  NOT NULL,
+  `date`         DATE             NOT NULL,
+  `solved`       TINYINT(1)       NOT NULL DEFAULT 0,
+  `guess_count`  TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `guesses`      VARCHAR(40)      NOT NULL DEFAULT '',
+  `completed_at` TIMESTAMP        NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`player_id`, `date`),
+  KEY `idx_date` (`date`),
+  CONSTRAINT `dr_fk_player` FOREIGN KEY (`player_id`) REFERENCES `players` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Friends system (safe to re-run)
 CREATE TABLE IF NOT EXISTS `friends` (
   `player_id`  BIGINT UNSIGNED NOT NULL,

@@ -7,6 +7,7 @@ USE `WordDuel`;
 
 -- ─── players ─────────────────────────────────────────────────────────────────
 DROP TABLE IF EXISTS `friends`;
+DROP TABLE IF EXISTS `daily_results`;
 DROP TABLE IF EXISTS `match_results`;
 DROP TABLE IF EXISTS `matches`;
 DROP TABLE IF EXISTS `words`;
@@ -18,6 +19,8 @@ CREATE TABLE `players` (
   `email`         VARCHAR(100)     NOT NULL,
   `password_hash` VARCHAR(255)     NOT NULL,
   `elo`           INT UNSIGNED     NOT NULL DEFAULT 1000,
+  `elo_timed`     INT UNSIGNED     NOT NULL DEFAULT 1000,
+  `elo_streak`    INT UNSIGNED     NOT NULL DEFAULT 1000,
   `wins`          INT UNSIGNED     NOT NULL DEFAULT 0,
   `losses`        INT UNSIGNED     NOT NULL DEFAULT 0,
   `games_played`  INT UNSIGNED     NOT NULL DEFAULT 0,
@@ -26,7 +29,9 @@ CREATE TABLE `players` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),
   UNIQUE KEY `email`    (`email`),
-  KEY `idx_elo` (`elo`)
+  KEY `idx_elo`        (`elo`),
+  KEY `idx_elo_timed`  (`elo_timed`),
+  KEY `idx_elo_streak` (`elo_streak`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── matches ─────────────────────────────────────────────────────────────────
@@ -71,6 +76,19 @@ CREATE TABLE `friends` (
   KEY `friend_id` (`friend_id`),
   CONSTRAINT `friends_ibfk_1` FOREIGN KEY (`player_id`) REFERENCES `players` (`id`) ON DELETE CASCADE,
   CONSTRAINT `friends_ibfk_2` FOREIGN KEY (`friend_id`) REFERENCES `players` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ─── daily_results ───────────────────────────────────────────────────────────
+CREATE TABLE `daily_results` (
+  `player_id`    BIGINT UNSIGNED NOT NULL,
+  `date`         DATE            NOT NULL,
+  `solved`       TINYINT(1)      NOT NULL DEFAULT 0,
+  `guess_count`  TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  `guesses`      VARCHAR(40)     NOT NULL DEFAULT '',
+  `completed_at` TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`player_id`, `date`),
+  KEY `idx_date` (`date`),
+  CONSTRAINT `dr_fk_player` FOREIGN KEY (`player_id`) REFERENCES `players` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── words ───────────────────────────────────────────────────────────────────

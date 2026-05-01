@@ -1,0 +1,597 @@
+{% extends "base.html" %}
+{% block title %} — Daily Challenge{% endblock %}
+{% block extra_css %}
+<link href="{{ url_for('static', filename='css/game.css') }}" rel="stylesheet">
+<style>
+.daily-wrapper {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 28px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.daily-header { text-align: center; }
+.daily-header h2 {
+  font-size: 2rem;
+  font-weight: 900;
+  color: #fff;
+  margin: 0;
+  letter-spacing: 1px;
+}
+.daily-meta { font-size: 0.85rem; color: #666; margin-top: 4px; }
+.daily-category {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.daily-category span {
+  background: #2a2a4a;
+  border: 1px solid #3a3a6a;
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* Progressive hint */
+.hint-container {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: #1e1e38;
+  border: 1px solid #ffd70033;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  color: #e8e8e8;
+  width: 340px;
+  max-width: 100%;
+  animation: fadeIn 0.4s ease;
+}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.hint-container i { color: #ffd700; font-size: 1rem; }
+.hint-letter {
+  font-size: 1.1rem;
+  font-weight: 900;
+  color: #ffd700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+.daily-badge {
+  display: inline-block;
+  padding: 3px 14px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: #ffd70022;
+  color: #ffd700;
+  border: 1px solid #ffd70044;
+  margin-bottom: 8px;
+}
+
+.daily-board-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Override game.css board to remove the two-player margin */
+.daily-board-section .board { margin-bottom: 0; }
+
+.daily-message {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  background: #1e1e38;
+  border-radius: 8px;
+  padding: 0 20px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  width: 340px;
+  max-width: 100%;
+}
+.daily-message.show { opacity: 1; }
+
+/* Result card */
+.daily-result-card {
+  background: #1a1a2e;
+  border: 1px solid #3a3a5c;
+  border-radius: 16px;
+  padding: 30px 28px;
+  width: 100%;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.daily-result-emoji { font-size: 2.6rem; line-height: 1; }
+.daily-result-card h3 {
+  font-weight: 900;
+  font-size: 1.5rem;
+  color: #fff;
+  margin: 0;
+}
+.daily-result-word {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #6c63ff;
+  text-transform: uppercase;
+}
+.daily-stat-row {
+  display: flex;
+  gap: 32px;
+  justify-content: center;
+}
+.daily-stat { text-align: center; }
+.daily-stat-val {
+  font-size: 1.9rem;
+  font-weight: 900;
+  color: #ffd700;
+  line-height: 1;
+}
+.daily-stat-label {
+  font-size: 0.7rem;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+.share-btn {
+  background: #6c63ff;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 26px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-family: 'Lato', sans-serif;
+  transition: background 0.2s;
+}
+.share-btn:hover { background: #5a52e0; }
+.share-copied { color: #6aaa64; font-size: 0.82rem; font-weight: 700; }
+.result-back { color: #555; font-size: 0.85rem; text-decoration: none; }
+.result-back:hover { color: #aaa; }
+
+/* Divider */
+.daily-divider {
+  width: 100%;
+  border: none;
+  border-top: 1px solid #2a2a4a;
+  margin: 4px 0;
+}
+
+/* Leaderboard */
+.daily-lb { width: 100%; }
+.daily-lb-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 14px;
+}
+.lb-entry {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4a;
+  border-radius: 10px;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.lb-rank {
+  font-weight: 900;
+  color: #555;
+  font-size: 0.9rem;
+  min-width: 28px;
+}
+.lb-name { flex: 1; font-weight: 700; color: #e8e8e8; font-size: 0.9rem; }
+.lb-name.me-tag::after {
+  content: ' (you)';
+  color: #6c63ff;
+  font-weight: 400;
+  font-size: 0.78rem;
+}
+.lb-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.lb-badge.solved { background: #538d4e22; color: #6aaa64; border: 1px solid #538d4e44; }
+.lb-badge.failed { background: #ff6b6b22; color: #ff6b6b; border: 1px solid #ff6b6b44; }
+.lb-time { font-size: 0.78rem; color: #555; white-space: nowrap; }
+.lb-empty { color: #555; text-align: center; font-size: 0.85rem; padding: 20px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="daily-wrapper">
+
+  <!-- Header -->
+  <div class="daily-header">
+    <div class="daily-badge"><i class="bi bi-calendar-check-fill"></i> Daily Challenge</div>
+    <h2>#{{ puzzle_number }}</h2>
+    <div class="daily-meta">{{ today }}</div>
+    <div class="daily-category">
+      Category:
+      <span>{{ {
+        'general':   '🌐 General',
+        'sports':    '⚽ Sports',
+        'science':   '🔬 Science',
+        'movies':    '🎬 Movies',
+        'food':      '🍕 Food',
+        'animals':   '🦁 Animals',
+        'geography': '🗺️ Geography',
+        'music':     '🎵 Music'
+      }.get(category, category | capitalize) }}</span>
+    </div>
+  </div>
+
+  <!-- Board + keyboard -->
+  <div class="daily-board-section" id="board-section">
+    <div id="board" class="board"></div>
+    <div id="daily-message" class="daily-message"></div>
+    <div id="hint-container" class="hint-container">
+      <i class="bi bi-lightbulb-fill"></i>
+      Hint: the word starts with <span class="hint-letter" id="hint-letter-display">—</span>
+    </div>
+    <div id="keyboard" class="keyboard"{% if completed %} style="pointer-events:none;opacity:0.4;"{% endif %}></div>
+  </div>
+
+  <!-- Result card (shown after completion) -->
+  {% set solved_from_server = completed and prior_results and prior_results[-1] == ['correct','correct','correct','correct','correct'] %}
+  <div id="daily-result" class="daily-result-card" style="display:{% if completed %}flex{% else %}none{% endif %}; flex-direction:column; align-items:center; gap:14px;">
+    <div class="daily-result-emoji" id="result-emoji">{% if completed %}{% if solved_from_server %}🎉{% else %}😔{% endif %}{% else %}—{% endif %}</div>
+    <h3 id="result-title">{% if completed %}{% if solved_from_server %}Solved!{% else %}Better luck tomorrow!{% endif %}{% else %}—{% endif %}</h3>
+    <div class="daily-result-word" id="result-word">{{ reveal_word or '' }}</div>
+    <div class="daily-stat-row">
+      <div class="daily-stat">
+        <div class="daily-stat-val" id="result-guesses">
+          {% if completed %}{% if solved_from_server %}{{ prior_guesses | length }}/6{% else %}X/6{% endif %}{% else %}—{% endif %}
+        </div>
+        <div class="daily-stat-label">Guesses</div>
+      </div>
+      <div class="daily-stat">
+        <div class="daily-stat-val" id="result-lb-pos">—</div>
+        <div class="daily-stat-label">Your Rank</div>
+      </div>
+    </div>
+    <button class="share-btn" onclick="shareResult()"><i class="bi bi-share-fill"></i> Share Result</button>
+    <div id="share-copied" class="share-copied" style="display:none;">Copied to clipboard!</div>
+    <a href="/dashboard" class="result-back">← Back to Dashboard</a>
+  </div>
+
+  <hr class="daily-divider">
+
+  <!-- Today's leaderboard -->
+  <div class="daily-lb">
+    <div class="daily-lb-title"><i class="bi bi-trophy-fill" style="color:#ffd700"></i> Today's Board</div>
+    {% if lb %}
+      {% for entry in lb %}
+      <div class="lb-entry">
+        <div class="lb-rank">
+          {% if loop.index == 1 %}🥇
+          {% elif loop.index == 2 %}🥈
+          {% elif loop.index == 3 %}🥉
+          {% else %}{{ loop.index }}{% endif %}
+        </div>
+        <div class="lb-name {% if entry.username == username %}me-tag{% endif %}">{{ entry.username }}</div>
+        {% if entry.solved %}
+          <span class="lb-badge solved">{{ entry.guess_count }}/6</span>
+        {% else %}
+          <span class="lb-badge failed">Failed</span>
+        {% endif %}
+        <div class="lb-time">{{ entry.completed_at.strftime('%H:%M') if entry.completed_at else '' }}</div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="lb-empty">No completions yet — be the first!</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const PRIOR_GUESSES = {{ prior_guesses | tojson }};
+const PRIOR_RESULTS = {{ prior_results | tojson }};
+const COMPLETED     = {{ completed | tojson }};
+const REVEAL_WORD   = {{ reveal_word | tojson }};
+const USERNAME      = {{ username | tojson }};
+const PUZZLE_NUM    = {{ puzzle_number }};
+const HINT_LETTER   = {{ hint_letter | tojson }};
+
+const MAX_ROWS = 6;
+const WORD_LEN = 5;
+
+let currentRow   = PRIOR_GUESSES.length;
+let currentCol   = 0;
+let currentGuess = [];
+let done         = COMPLETED;
+const keyState   = {};
+const allResults = [...PRIOR_RESULTS]; // grows as player makes new guesses this session
+
+const $ = id => document.getElementById(id);
+
+// ── Build board ───────────────────────────────────────────────────────────────
+function buildBoard() {
+  const board = $('board');
+  board.innerHTML = '';
+  for (let r = 0; r < MAX_ROWS; r++) {
+    const row = document.createElement('div');
+    row.className = 'board-row';
+    for (let c = 0; c < WORD_LEN; c++) {
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      row.appendChild(tile);
+    }
+    board.appendChild(row);
+  }
+}
+
+function getTile(row, col) {
+  return document.querySelector(
+    `#board .board-row:nth-child(${row + 1}) .tile:nth-child(${col + 1})`
+  );
+}
+
+// ── Build keyboard ────────────────────────────────────────────────────────────
+const KB_ROWS = [
+  ['Q','W','E','R','T','Y','U','I','O','P'],
+  ['A','S','D','F','G','H','J','K','L'],
+  ['ENTER','Z','X','C','V','B','N','M','⌫'],
+];
+
+function buildKeyboard() {
+  const kb = $('keyboard');
+  kb.innerHTML = '';
+  KB_ROWS.forEach(letters => {
+    const row = document.createElement('div');
+    row.className = 'key-row';
+    letters.forEach(letter => {
+      const key = document.createElement('button');
+      key.className = 'key' + (letter.length > 1 ? ' wide' : '');
+      key.textContent = letter;
+      key.dataset.key = letter;
+      key.addEventListener('click', () => handleKey(letter));
+      row.appendChild(key);
+    });
+    kb.appendChild(row);
+  });
+}
+
+function updateKeyboard(guessArr, result) {
+  const priority = { correct: 3, present: 2, absent: 1 };
+  for (let i = 0; i < guessArr.length; i++) {
+    const letter = guessArr[i];
+    const status = result[i];
+    if (!keyState[letter] || priority[status] > priority[keyState[letter]]) {
+      keyState[letter] = status;
+    }
+  }
+  document.querySelectorAll('.key').forEach(key => {
+    const s = keyState[key.dataset.key];
+    if (s) key.className = 'key' + (key.dataset.key.length > 1 ? ' wide' : '') + ' ' + s;
+  });
+}
+
+// ── Tile reveal (animated) ────────────────────────────────────────────────────
+function revealRow(row, guessArr, result, cb) {
+  for (let c = 0; c < WORD_LEN; c++) {
+    const tile = getTile(row, c);
+    tile.textContent = guessArr[c];
+    const status = result[c];
+    const delay  = c * 120;
+    setTimeout(() => {
+      tile.classList.add('reveal');
+      setTimeout(() => tile.classList.add(status), 250);
+    }, delay);
+  }
+  if (cb) setTimeout(cb, WORD_LEN * 120 + 300);
+}
+
+// ── Pre-fill prior guesses (instant, no animation) ───────────────────────────
+function prefillGuesses() {
+  for (let r = 0; r < PRIOR_GUESSES.length; r++) {
+    const guess  = PRIOR_GUESSES[r]; // string
+    const result = PRIOR_RESULTS[r];
+    for (let c = 0; c < WORD_LEN; c++) {
+      const tile = getTile(r, c);
+      tile.textContent = guess[c];
+      tile.classList.add(result[c]);
+    }
+    updateKeyboard(guess.split(''), result);
+  }
+}
+
+// ── Progressive hint ──────────────────────────────────────────────────────────
+function showHint(letter) {
+  $('hint-letter-display').textContent = letter;
+  $('hint-container').style.display = 'flex';
+}
+
+// ── Message flash ─────────────────────────────────────────────────────────────
+let msgTimer;
+function showMessage(text, ms = 1800) {
+  const el = $('daily-message');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+// ── Shake row ─────────────────────────────────────────────────────────────────
+function shakeRow(row) {
+  for (let c = 0; c < WORD_LEN; c++) {
+    const tile = getTile(row, c);
+    tile.classList.add('shake');
+    setTimeout(() => tile.classList.remove('shake'), 600);
+  }
+}
+
+// ── Key input ─────────────────────────────────────────────────────────────────
+function handleKey(key) {
+  if (done) return;
+  if (key === '⌫' || key === 'BACKSPACE') {
+    if (currentCol > 0) {
+      currentCol--;
+      currentGuess.pop();
+      const tile = getTile(currentRow, currentCol);
+      tile.textContent = '';
+      tile.classList.remove('filled');
+    }
+  } else if (key === 'ENTER') {
+    submitGuess();
+  } else if (/^[A-Z]$/.test(key) && currentCol < WORD_LEN) {
+    const tile = getTile(currentRow, currentCol);
+    tile.textContent = key;
+    tile.classList.add('filled');
+    currentGuess.push(key);
+    currentCol++;
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  const key = e.key.toUpperCase();
+  if (key === 'ENTER') handleKey('ENTER');
+  else if (key === 'BACKSPACE') handleKey('⌫');
+  else if (/^[A-Z]$/.test(key)) handleKey(key);
+});
+
+// ── Submit guess ──────────────────────────────────────────────────────────────
+let submitting = false;
+
+async function submitGuess() {
+  if (done || submitting) return;
+  if (currentGuess.length < WORD_LEN) {
+    showMessage('Not enough letters');
+    shakeRow(currentRow);
+    return;
+  }
+
+  submitting = true;
+  const word = currentGuess.join('');
+
+  let data;
+  try {
+    const res = await fetch('/api/daily/guess', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guess: word }),
+    });
+    data = await res.json();
+  } catch {
+    showMessage('Network error');
+    submitting = false;
+    return;
+  }
+
+  if (data.error) {
+    showMessage(data.error);
+    if (data.error === 'Not in word list') {
+      shakeRow(currentRow);
+      currentGuess = [];
+      currentCol   = 0;
+      for (let c = 0; c < WORD_LEN; c++) {
+        getTile(currentRow, c).textContent = '';
+        getTile(currentRow, c).classList.remove('filled');
+      }
+    }
+    submitting = false;
+    return;
+  }
+
+  const result  = data.result;
+  const guessArr = [...currentGuess];
+  allResults.push(result);
+
+  revealRow(currentRow, guessArr, result, () => {
+    updateKeyboard(guessArr, result);
+    currentRow++;
+    currentGuess = [];
+    currentCol   = 0;
+    submitting   = false;
+
+    if (data.hint_letter) showHint(data.hint_letter);
+
+    if (data.completed) {
+      done = true;
+      $('hint-container').style.display = 'none';
+      setTimeout(() => showCompletion(data), 200);
+    }
+  });
+}
+
+// ── Show completion card ──────────────────────────────────────────────────────
+function showCompletion(data) {
+  $('result-emoji').textContent   = data.won ? '🎉' : '😔';
+  $('result-title').textContent   = data.won ? 'Solved!' : 'Better luck tomorrow!';
+  $('result-word').textContent    = data.word || '';
+  $('result-guesses').textContent = data.won ? `${data.guess_number}/6` : 'X/6';
+  $('daily-result').style.display = 'flex';
+  $('keyboard').style.pointerEvents = 'none';
+  $('keyboard').style.opacity = '0.4';
+
+  // Reload to get fresh leaderboard with this player's entry
+  setTimeout(() => window.location.reload(), 2200);
+}
+
+// ── Share result ──────────────────────────────────────────────────────────────
+function shareResult() {
+  const solved  = $('result-title').textContent === 'Solved!';
+  const guesses = parseInt($('result-guesses').textContent) || 0;
+  const score   = solved ? `${guesses}/6` : 'X/6';
+  const grid    = allResults.map(r =>
+    r.map(s => s === 'correct' ? '🟩' : s === 'present' ? '🟨' : '⬛').join('')
+  ).join('\n');
+  const text = `WordDuel Daily #${PUZZLE_NUM} ${score}\n\n${grid}`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    $('share-copied').style.display = 'block';
+    setTimeout(() => { $('share-copied').style.display = 'none'; }, 2000);
+  }).catch(() => showMessage('Copy failed'));
+}
+
+// ── Update leaderboard rank display ──────────────────────────────────────────
+function updateRankDisplay() {
+  const entries = document.querySelectorAll('.lb-entry');
+  let rank = '—';
+  entries.forEach((el, i) => {
+    if (el.querySelector('.me-tag')) rank = `#${i + 1}`;
+  });
+  $('result-lb-pos').textContent = rank;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+buildBoard();
+buildKeyboard();
+prefillGuesses();
+updateRankDisplay();
+if (HINT_LETTER) showHint(HINT_LETTER);
+</script>
+{% endblock %}

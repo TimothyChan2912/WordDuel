@@ -36,13 +36,28 @@
 .lb-elo { font-weight: 900; color: #ffd700; font-size: 1rem; }
 .lb-stat { color: #aaa; font-size: 0.9rem; }
 .lb-wr { color: #6aaa64; font-weight: 700; }
+
+.lb-tabs { display: flex; gap: 8px; margin-bottom: 24px; }
+.lb-tab {
+  padding: 7px 18px; border-radius: 20px; font-size: 0.8rem;
+  font-weight: 700; letter-spacing: 0.5px; text-decoration: none;
+  border: 1px solid #2a2a4a; color: #666;
+  transition: all 0.15s;
+}
+.lb-tab:hover { border-color: #6c63ff66; color: #aaa; }
+.lb-tab.active { background: #6c63ff22; border-color: #6c63ff; color: #6c63ff; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="lb-wrapper">
   <h2><i class="bi bi-trophy-fill" style="color:#ffd700"></i> Leaderboard</h2>
-  <p class="lb-subtitle">Top players ranked by ELO. Games played are required to appear.</p>
+  <div class="lb-tabs">
+    <a href="{{ url_for('leaderboard', mode='classic') }}" class="lb-tab {% if mode == 'classic' %}active{% endif %}"><i class="bi bi-controller"></i> Classic</a>
+    <a href="{{ url_for('leaderboard', mode='timed') }}"   class="lb-tab {% if mode == 'timed'   %}active{% endif %}"><i class="bi bi-stopwatch"></i> Timed</a>
+    <a href="{{ url_for('leaderboard', mode='streak') }}"  class="lb-tab {% if mode == 'streak'  %}active{% endif %}"><i class="bi bi-lightning-fill"></i> Streak</a>
+  </div>
+  <p class="lb-subtitle">Top 50 players ranked by {{ mode | capitalize }} ELO.</p>
 
   {% if players %}
   <table class="lb-table">
@@ -74,7 +89,7 @@
             {{ p.rank_name }}
           </span>
         </td>
-        <td class="lb-elo">{{ p.elo }}</td>
+        <td class="lb-elo">{{ p.display_elo }}</td>
         <td class="lb-stat">{{ p.wins }}</td>
         <td class="lb-stat">{{ p.losses }}</td>
         <td class="lb-wr">{{ p.win_rate or '—' }}{% if p.win_rate %}%{% endif %}</td>
