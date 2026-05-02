@@ -18,6 +18,13 @@
     timerInterval: null,
     matchStartTime: null,
     duration: null,
+
+    battleMode: MODE === 'battle',
+    hp: 100,
+    oppHP: 100,
+    attempts: 0,
+    oppAttempts: 0,
+    roundFinished: false,
   };
 
   const keyState = {}; // letter → 'correct' | 'present' | 'absent'
@@ -150,6 +157,7 @@
       showMessage('Not enough letters');
       return;
     }
+    state.attempts++;
     const guess = state.currentGuess.join('');
     socket.emit('submit_guess', { guess });
   }
@@ -386,6 +394,15 @@
       badge.classList.add('timed');
     } else if (MODE === 'streak') {
       badge.textContent = `Streak · ${catLabel}`;
+    } else if (MODE === 'battle') {
+      badge.textContent = `Battle · ${catLabel}`;
+      badge.classList.add('battle');
+      $('battle-hp').style.display = 'flex';
+      state.hp = data.hp ?? 100;
+      state.oppHP = data.opponent_hp ?? 100;
+      $('your-hp-fill').style.width = '100%';
+      $('opp-hp-fill').style.width = '100%';
+      updateHP();
     } else {
       badge.textContent = `Classic · ${catLabel}`;
     }
@@ -425,6 +442,13 @@
     if (MODE === 'streak') {
       $('streak-info').style.display = 'inline';
     }
+    if (MODE === 'battle') {
+      $('battle-hp').style.display = 'flex';
+      state.hp = data.hp ?? 100;
+      state.oppHP = data.opponent_hp ?? 100;
+      state.round = data.round || 1;
+      updateHP();
+    }
     if (data.guesses && data.guesses.length) {
       restoreBoard(data.guesses, data.results);
     }
@@ -456,6 +480,9 @@
       if (game_over) {
         state.done = true;
         if (!solved) showMessage(`The word was: ${data.word || ''}`, 3000);
+      } else if (MODE === 'battle' && data.round_done) {
+        state.waitingNextRound = true;
+        showMessage(solved ? 'Round locked in. Waiting for opponent...' : 'No solve. Waiting for opponent...', 2200);
       }
     });
 
@@ -511,6 +538,50 @@
   socket.on('error', data => {
     showMessage(data.message || 'An error occurred');
   });
+
+socket.on('battle_round_end', data => {
+  state.hp = data.your_hp;
+  state.oppHP = data.opp_hp;
+  state.waitingNextRound = true;
+
+  updateHP();
+
+  showMessage(
+    `Round ${data.round} ended: dealt ${data.damage_dealt}, took ${data.damage_taken}`
+  );
+
+  state.attempts = 0;
+  state.oppAttempts = 0;
+});
+
+socket.on('battle_next_round', data => {
+  state.round = data.round;
+  state.currentRow = 0;
+  state.currentCol = 0;
+  state.currentGuess = [];
+  state.waitingNextRound = false;
+
+  buildBoard();
+  buildOppBoard();
+  buildKeyboard();
+  Object.keys(keyState).forEach(k => delete keyState[k]);
+  $('opp-status').textContent = 'Waiting...';
+  $('opp-status').classList.remove('solved');
+  showMessage(`Battle round ${data.round}`, 1800);
+});
+
+function updateHP() {
+  const yourFill = $('your-hp-fill');
+  const oppFill  = $('opp-hp-fill');
+
+  if (!yourFill || !oppFill) return;
+
+  yourFill.style.width = Math.max(0, Math.min(100, state.hp)) + '%';
+  oppFill.style.width  = Math.max(0, Math.min(100, state.oppHP)) + '%';
+
+  $('your-hp-text').textContent = state.hp;
+  $('opp-hp-text').textContent  = state.oppHP;
+}
 
   // ── Post-match chat ───────────────────────────────────────────────────────
   function sendChat() {

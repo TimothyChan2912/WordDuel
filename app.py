@@ -17,7 +17,7 @@ BOT_DELAY_MIN = 3        # min seconds between bot guesses
 BOT_DELAY_MAX = 8        # max seconds between bot guesses
 STREAK_DURATION = 180    # seconds for a streak match (3 minutes)
 
-ELO_COL = {"classic": "elo", "timed": "elo_timed", "streak": "elo_streak"}
+ELO_COL = {"classic": "elo", "timed": "elo_timed", "streak": "elo_streak", "battle": "elo_battle"}
 
 load_dotenv()
 
@@ -52,7 +52,7 @@ def login_required(f):
 CATEGORIES = ["general", "sports", "science", "movies", "food", "animals", "geography", "music"]
 matchmaking_queues = {
     mode: {cat: [] for cat in CATEGORIES}
-    for mode in ("classic", "timed", "streak")
+    for mode in ("classic", "timed", "streak", "battle")
 }
 active_matches  = {}   # match_id  → match dict
 player_to_match = {}   # user_id   → match_id
@@ -177,10 +177,15 @@ def dashboard():
         with get_db() as db:
             cur = db.cursor(dictionary=True)
             cur.execute(
-                "SELECT id, username, elo, elo_timed, elo_streak, wins, losses, games_played FROM players WHERE id = %s",
+                "SELECT id, username, elo, elo_timed, elo_streak, elo_battle, wins, losses, games_played FROM players WHERE id = %s",
                 (user_id,),
             )
             player = cur.fetchone()
+
+            if not player:
+                flash("Player not found. Please log in again.", "danger")
+                return redirect(url_for("logout"))
+
             cur.execute(
                 """
                 SELECT m.id, m.game_mode, m.completed_at,
@@ -253,9 +258,11 @@ def dashboard():
     elo_classic = (player["elo"]        if player else None) or 1000
     elo_timed   = (player["elo_timed"]  if player else None) or 1000
     elo_streak  = (player["elo_streak"] if player else None) or 1000
+    elo_battle  = (player["elo_battle"] if player else None) or 1000
     rank_name,        rank_color        = get_rank(elo_classic)
     rank_timed_name,  rank_timed_color  = get_rank(elo_timed)
     rank_streak_name, rank_streak_color = get_rank(elo_streak)
+    rank_battle_name, rank_battle_color = get_rank(elo_battle)
     return render_template(
         "dashboard.html",
         player=player,
@@ -264,6 +271,7 @@ def dashboard():
         rank_name=rank_name,               rank_color=rank_color,
         rank_timed_name=rank_timed_name,   rank_timed_color=rank_timed_color,
         rank_streak_name=rank_streak_name, rank_streak_color=rank_streak_color,
+        rank_battle_name=rank_battle_name, rank_battle_color=rank_battle_color,
         mode_stats=mode_stats,
         activity=activity,
     )
@@ -272,7 +280,7 @@ def dashboard():
 @login_required
 def game():
     mode = request.args.get("mode", "classic")
-    if mode not in ("classic", "timed", "streak"):
+    if mode not in ("classic", "timed", "streak", "battle"):
         mode = "classic"
     player_to_match.pop(session["user_id"], None)
     return render_template("game.html", username=session["username"], mode=mode)
@@ -289,7 +297,7 @@ def leaderboard():
             cur = db.cursor(dictionary=True)
             cur.execute(
                 f"""
-                SELECT username, elo, elo_timed, elo_streak, wins, losses, games_played,
+                SELECT username, elo, elo_timed, elo_streak, elo_battle, wins, losses, games_played,
                        ROUND(wins / NULLIF(games_played, 0) * 100, 1) AS win_rate
                 FROM   players
                 ORDER  BY {col} DESC
@@ -655,6 +663,9 @@ def on_connect():
             "results":    ps["results"],
             "opponent":   ps["opponent_name"],
             "opponent_results": opp.get("results", []),
+            "hp":         ps.get("hp"),
+            "opponent_hp": opp.get("hp"),
+            "round":      match.get("round", match.get("current_round", 0)) + 1,
         })
 
 @socketio.on("disconnect")
@@ -848,7 +859,7 @@ def on_join_private_match(data):
     try:
         with get_db() as db:
             cur = db.cursor(dictionary=True)
-            cur.execute("SELECT elo, elo_timed, elo_streak FROM players WHERE id=%s", (user_id,))
+            cur.execute("SELECT elo, elo_timed, elo_streak, elo_battle FROM players WHERE id=%s", (user_id,))
             row = cur.fetchone()
             cur.close()
         elo = (row[ELO_COL.get(match_mode, "elo")] if row else None) or 1000
@@ -899,7 +910,7 @@ def on_join_queue(data):
     try:
         with get_db() as db:
             cur = db.cursor(dictionary=True)
-            cur.execute("SELECT elo, elo_timed, elo_streak FROM players WHERE id = %s", (user_id,))
+            cur.execute("SELECT elo, elo_timed, elo_streak, elo_battle FROM players WHERE id = %s", (user_id,))
             row = cur.fetchone()
             cur.close()
         elo = (row[ELO_COL.get(mode, "elo")] if row else None) or 1000
@@ -943,6 +954,9 @@ def on_forfeit():
     if opp_ps and not opp_ps["done"]:
         opp_ps["done"] = True
         opp_ps["won"]  = True
+        if match["mode"] == "battle":
+            ps["hp"] = 0
+            opp_ps["hp"] = max(opp_ps.get("hp", 0), 1)
         if not opp_ps["score"]:
             opp_ps["score"] = 100
 
@@ -983,6 +997,10 @@ def on_submit_guess(data):
     result       = check_guess(guess, match["word"])
     won          = all(r == "correct" for r in result)
     guess_number = len(ps["guesses"]) + 1
+
+    if match["mode"] == "battle":
+        _handle_battle_guess(match_id, match, ps, guess, result, won, guess_number)
+        return
 
     ps["guesses"].append(guess)
     ps["results"].append(result)
@@ -1130,6 +1148,209 @@ def _streak_next_round(match_id):
 
     socketio.emit("streak_next_round", {"round": idx + 1}, room=match_id)
 
+def _handle_battle_guess(match_id, match, ps, guess, result, won, guess_number):
+    opp_id = str(ps["opponent_id"])
+    opp_ps = match["players"].get(opp_id)
+
+    ps["guesses"].append(guess)
+    ps["results"].append(result)
+
+    ps["attempts"] = guess_number
+
+    if won or guess_number >= 6:
+        ps["round_done"] = True
+        ps["attempts"] = guess_number if won else 7
+
+        emit("guess_result", {
+            "guess": guess,
+            "result": result,
+            "guess_number": guess_number,
+            "solved": won,
+            "round_done": True,
+        })
+
+        if opp_ps and opp_ps.get("sid"):
+            socketio.emit("opponent_progress", {
+                "guesses_made": guess_number,
+                "solved": won,
+                "done": True,
+                "all_results": ps["results"],
+            }, room=opp_ps["sid"])
+
+        if opp_ps and opp_ps["round_done"]:
+            if not match.get("round_resolving"):
+                match["round_resolving"] = True
+                socketio.start_background_task(_battle_resolve_round, match_id)
+
+    else:
+        emit("guess_result", {
+            "guess": guess,
+            "result": result,
+            "guess_number": guess_number,
+            "solved": False,
+            "round_done": False,
+        })
+
+        if opp_ps and opp_ps.get("sid"):
+            socketio.emit("opponent_progress", {
+                "guesses_made": guess_number,
+                "solved": False,
+                "done": False,
+                "all_results": ps["results"],
+            }, room=opp_ps["sid"])
+
+def _calculate_damage(attempts):
+    damage_by_attempt = {
+        1: 50,
+        2: 40,
+        3: 35,
+        4: 25,
+        5: 20,
+        6: 10,
+    }
+    if attempts >= 7:
+        return 0
+    return damage_by_attempt.get(attempts, 0)
+
+def _battle_resolve_round(match_id):
+    socketio.sleep(1.5)
+
+    match = active_matches.get(match_id)
+    if not match or match["ended"]:
+        return
+
+    p1, p2 = list(match["players"].values())
+
+    d1 = _calculate_damage(p1["attempts"])
+    d2 = _calculate_damage(p2["attempts"])
+
+    p1["hp"] -= d2
+    p2["hp"] -= d1
+
+    p1["score"] = max(0, p1.get("hp", 0))
+    p2["score"] = max(0, p2.get("hp", 0))
+
+    _emit_battle_round_end(match_id, p1, p2, d1, d2)
+
+    if p1["hp"] <= 0 or p2["hp"] <= 0:
+        if p1["hp"] > p2["hp"]:
+            p1["won"] = True
+        elif p2["hp"] > p1["hp"]:
+            p2["won"] = True
+
+        _end_match(match_id)
+        return
+
+    match["round"] += 1
+    idx = match["round"]
+
+    if idx >= len(match["words"]):
+        cat_words = CATEGORY_WORDS.get(match.get("category"), WORDS)
+        used_words = set(match.get("words") or [])
+        next_pool = [w.upper() for w in cat_words if w.upper() not in used_words] or [w.upper() for w in cat_words]
+        match["words"].append(random.choice(next_pool))
+
+    match["word"] = match["words"][idx]
+
+    for ps in match["players"].values():
+        ps["guesses"] = []
+        ps["results"] = []
+        ps["round_done"] = False
+        ps["attempts"] = 0
+        ps["round_won"] = False
+
+    match["round_resolving"] = False
+
+    socketio.sleep(1.0)
+    _emit_battle_next_round(match_id, idx + 1)
+
+
+def _emit_battle_round_end(match_id, p1, p2, p1_damage, p2_damage):
+    for ps, opp, damage_dealt, damage_taken in (
+        (p1, p2, p1_damage, p2_damage),
+        (p2, p1, p2_damage, p1_damage),
+    ):
+        if ps["user_id"] == BOT_USER_ID or not ps.get("sid"):
+            continue
+        socketio.emit("battle_round_end", {
+            "your_hp":      max(0, ps.get("hp", 0)),
+            "opp_hp":       max(0, opp.get("hp", 0)),
+            "damage_dealt": damage_dealt,
+            "damage_taken": damage_taken,
+            "round":        active_matches.get(match_id, {}).get("round", 0) + 1,
+        }, room=ps["sid"])
+
+
+def _emit_battle_next_round(match_id, round_number):
+    match = active_matches.get(match_id)
+    if not match or match["ended"]:
+        return
+    for ps in match["players"].values():
+        if ps["user_id"] == BOT_USER_ID or not ps.get("sid"):
+            continue
+        socketio.emit("battle_next_round", {"round": round_number}, room=ps["sid"])
+
+
+def _bot_play_battle(match_id):
+    while True:
+        match = active_matches.get(match_id)
+        if not match or match["ended"]:
+            return
+
+        bot_ps = match["players"].get(BOT_USER_ID)
+        if not bot_ps or bot_ps.get("round_done"):
+            socketio.sleep(0.5)
+            continue
+
+        socketio.sleep(random.uniform(BOT_DELAY_MIN, BOT_DELAY_MAX))
+
+        match = active_matches.get(match_id)
+        if not match or match["ended"]:
+            return
+        bot_ps = match["players"].get(BOT_USER_ID)
+        if not bot_ps or bot_ps.get("round_done"):
+            continue
+
+        human_id = str(bot_ps["opponent_id"])
+        human_ps = match["players"].get(human_id)
+        bot_solves = random.random() < 0.75
+        attempts = random.randint(2, 6) if bot_solves else 6
+        used = {match["word"]}
+
+        for attempt in range(1, attempts + 1):
+            if attempt == attempts and bot_solves:
+                guess = match["word"]
+            else:
+                guess_pool = [w.upper() for w in VALID_WORDS if w.upper() not in used]
+                guess = random.choice(guess_pool or [w.upper() for w in VALID_WORDS])
+                used.add(guess)
+
+            result = check_guess(guess, match["word"])
+            won = all(r == "correct" for r in result)
+            bot_ps["guesses"].append(guess)
+            bot_ps["results"].append(result)
+            bot_ps["attempts"] = attempt
+
+            if won or attempt >= 6:
+                bot_ps["round_done"] = True
+                bot_ps["attempts"] = attempt if won else 7
+
+            if human_ps and human_ps.get("sid"):
+                socketio.emit("opponent_progress", {
+                    "guesses_made": attempt,
+                    "solved": won,
+                    "done": bot_ps["round_done"],
+                    "all_results": bot_ps["results"],
+                }, room=human_ps["sid"])
+
+            if bot_ps["round_done"]:
+                if human_ps and human_ps.get("round_done") and not match.get("round_resolving"):
+                    match["round_resolving"] = True
+                    socketio.start_background_task(_battle_resolve_round, match_id)
+                break
+
+            socketio.sleep(random.uniform(1.0, 2.5))
+
 
 def _bot_play_streak(match_id):
     """Bot solves bot_target rounds then fails, ending the game."""
@@ -1267,7 +1488,7 @@ def _create_bot_match(player, mode, category="general"):
            "elo": BOT_ELO, "sid": None, "joined_at": time.time()}
 
     cat_words = CATEGORY_WORDS.get(category, WORDS)
-    if mode == "streak":
+    if mode in ("streak", "battle"):
         words = [w.upper() for w in random.sample(cat_words, min(20, len(cat_words)))]
         word  = words[0]
     else:
@@ -1283,6 +1504,8 @@ def _create_bot_match(player, mode, category="general"):
         "word":                word,
         "words":               words,
         "current_round":       0,
+        "round":               0,
+        "round_resolving":     False,
         "round_transitioning": False,
         "mode":                mode,
         "category":            category,
@@ -1316,6 +1539,8 @@ def _create_bot_match(player, mode, category="general"):
 
     if mode == "streak":
         socketio.start_background_task(_bot_play_streak, match_id)
+    elif mode == "battle":
+        socketio.start_background_task(_bot_play_battle, match_id)
     else:
         socketio.start_background_task(_bot_play, match_id)
 
@@ -1381,7 +1606,7 @@ def _bot_play(match_id):
 
 def _create_match(p1, p2, mode, category="general"):
     cat_words = CATEGORY_WORDS.get(category, WORDS)
-    if mode == "streak":
+    if mode in ("streak", "battle"):
         words = [w.upper() for w in random.sample(cat_words, min(20, len(cat_words)))]
         word  = words[0]
     else:
@@ -1397,6 +1622,8 @@ def _create_match(p1, p2, mode, category="general"):
         "word":                word,
         "words":               words,
         "current_round":       0,
+        "round":               0,
+        "round_resolving":    False,
         "round_transitioning": False,
         "mode":                mode,
         "category":            category,
@@ -1425,6 +1652,7 @@ def _create_match(p1, p2, mode, category="general"):
             "opponent_elo": opp["elo"],
             "duration":     duration,
             "start_time":   start,
+            "hp":          100 if mode == "battle" else None,
         }, room=p["sid"])
 
     if mode in ("timed", "streak") and duration:
@@ -1449,6 +1677,9 @@ def _player_state(p, opp):
         "eliminated":    False,
         "round_done":    False,
         "round_won":     False,
+        # battle-mode fields (unused in other modes)
+        "hp" :             100,
+        "attempts": 0,
     }
 
 def _timed_end(match_id, duration):
@@ -1460,6 +1691,84 @@ def _timed_end(match_id, duration):
             ps["done"] = True
         _end_match(match_id)
 
+
+def _get_or_create_bot_player_id(cur):
+    cur.execute("SELECT id FROM players WHERE username = %s", (BOT_USERNAME,))
+    row = cur.fetchone()
+    if row:
+        return row[0] if not isinstance(row, dict) else row["id"]
+
+    cur.execute(
+        """
+        INSERT INTO players (username, email, password_hash, elo, elo_timed, elo_streak, elo_battle)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            BOT_USERNAME,
+            "wordbot@wordduel.local",
+            generate_password_hash(os.getenv("BOT_PASSWORD", "wordbot-local-account")),
+            BOT_ELO,
+            BOT_ELO,
+            BOT_ELO,
+            BOT_ELO,
+        ),
+    )
+    return cur.lastrowid
+
+
+def _db_player_id(cur, player_id):
+    return _get_or_create_bot_player_id(cur) if player_id == BOT_USER_ID else player_id
+
+
+def _persist_match_result(match, p1, p2, winner_id, elo_changes):
+    with get_db() as db:
+        cur = db.cursor()
+        db_p1_id = _db_player_id(cur, p1["user_id"])
+        db_p2_id = _db_player_id(cur, p2["user_id"])
+        db_winner_id = None if winner_id is None else _db_player_id(cur, winner_id)
+
+        cur.execute(
+            "INSERT INTO matches (player1_id, player2_id, status, game_mode, completed_at) "
+            "VALUES (%s, %s, 'completed', %s, NOW())",
+            (db_p1_id, db_p2_id, match["mode"]),
+        )
+        db_match_id = cur.lastrowid
+        cur.execute(
+            "INSERT INTO match_results (match_id, winner_id, player1_score, player2_score) "
+            "VALUES (%s, %s, %s, %s)",
+            (db_match_id, db_winner_id, p1["score"], p2["score"]),
+        )
+
+        col = ELO_COL.get(match["mode"], "elo")
+        for ps in (p1, p2):
+            pid = ps["user_id"]
+            if pid == BOT_USER_ID:
+                continue
+            is_winner = pid == winner_id
+            is_draw = winner_id is None
+            cur.execute(
+                f"""
+                UPDATE players SET
+                    {col}        = GREATEST(100, {col} + %s),
+                    games_played = games_played + 1,
+                    wins         = wins   + %s,
+                    losses       = losses + %s
+                WHERE id = %s
+                """,
+                (
+                    elo_changes.get(pid, 0),
+                    1 if is_winner else 0,
+                    1 if (not is_winner and not is_draw) else 0,
+                    pid,
+                ),
+            )
+            if cur.rowcount != 1:
+                raise RuntimeError(f"Expected to update 1 player row for id={pid}, updated {cur.rowcount}")
+
+        db.commit()
+        cur.close()
+
+
 def _end_match(match_id):
     match = active_matches.get(match_id)
     if not match or match["ended"]:
@@ -1468,6 +1777,7 @@ def _end_match(match_id):
 
     plist = list(match["players"].values())
     p1, p2 = plist[0], plist[1]
+
 
     # Determine winner
     winner_id = None
@@ -1487,6 +1797,16 @@ def _end_match(match_id):
         elif p2_streak > p1_streak:
             winner_id = p2["user_id"]
         # else: draw (both eliminated on same round with equal streak)
+    elif match["mode"] == "battle":
+        p1_hp = p1.get("hp", 0)
+        p2_hp = p2.get("hp", 0)
+        p1["score"] = max(0, p1_hp)
+        p2["score"] = max(0, p2_hp)
+        if p1_hp > p2_hp and p2_hp <= 0:
+            winner_id = p1["user_id"]
+        elif p2_hp > p1_hp and p1_hp <= 0:
+            winner_id = p2["user_id"]
+        # else: draw (both alive or both knocked out)
     elif p1["won"] and not p2["won"]:
         winner_id = p1["user_id"]
     elif p2["won"] and not p1["won"]:
@@ -1514,67 +1834,15 @@ def _end_match(match_id):
 
     is_bot_match = match.get("bot_match", False)
 
-    if not is_bot_match:
-        try:
-            with get_db() as db:
-                cur = db.cursor()
-                cur.execute(
-                    "INSERT INTO matches (player1_id, player2_id, status, game_mode, completed_at) "
-                    "VALUES (%s, %s, 'completed', %s, NOW())",
-                    (p1["user_id"], p2["user_id"], match["mode"]),
-                )
-                db_match_id = cur.lastrowid
-                cur.execute(
-                    "INSERT INTO match_results (match_id, winner_id, player1_score, player2_score) "
-                    "VALUES (%s, %s, %s, %s)",
-                    (db_match_id, winner_id, p1["score"], p2["score"]),
-                )
-                col = ELO_COL.get(match["mode"], "elo")
-                for ps in plist:
-                    pid       = ps["user_id"]
-                    is_winner = pid == winner_id
-                    is_draw   = winner_id is None
-                    cur.execute(
-                        f"""
-                        UPDATE players SET
-                            {col}        = GREATEST(100, {col} + %s),
-                            games_played = games_played + 1,
-                            wins         = wins   + %s,
-                            losses       = losses + %s
-                        WHERE id = %s
-                        """,
-                        (
-                            elo_changes[pid],
-                            1 if is_winner else 0,
-                            1 if (not is_winner and not is_draw) else 0,
-                            pid,
-                        ),
-                    )
-                cur.close()
-        except Exception as e:
-            print(f"DB error in _end_match: {e}")
-    elif is_bot_match and match.get("forfeited"):
-        # Bot match forfeit — record the loss and ELO drop for the human player only
-        human_ps = next((p for p in plist if p["user_id"] != BOT_USER_ID), None)
-        if human_ps:
-            _, ld = elo_delta(BOT_ELO, human_ps["elo"])
-            try:
-                with get_db() as db:
-                    cur = db.cursor()
-                    col = ELO_COL.get(match["mode"], "elo")
-                    cur.execute(
-                        f"""
-                        UPDATE players SET
-                            {col}        = GREATEST(100, {col} + %s),
-                            games_played = games_played + 1,
-                            losses       = losses + 1
-                        WHERE id = %s
-                        """,
-                        (ld, human_ps["user_id"]),
-                    )
-                    cur.close()
-            except Exception as e:
-                print(f"DB error in bot forfeit: {e}")
+    try:
+        _persist_match_result(match, p1, p2, winner_id, elo_changes)
+    except Exception as e:
+        print(
+            "DB error in _end_match: "
+            f"match_id={match_id} mode={match.get('mode')} "
+            f"p1={p1.get('user_id')} p2={p2.get('user_id')} winner={winner_id} "
+            f"scores=({p1.get('score')},{p2.get('score')}) error={e}"
+        )
 
     for ps in plist:
         pid = ps["user_id"]
@@ -1582,7 +1850,7 @@ def _end_match(match_id):
             continue  # bot has no socket
         opp    = p2 if ps == p1 else p1
         result = "win" if pid == winner_id else ("draw" if not winner_id else "loss")
-        elo_ch = 0 if is_bot_match else elo_changes.get(pid, 0)
+        elo_ch = elo_changes.get(pid, 0)
         socketio.emit("game_over", {
             "result":            result,
             "word":              match["word"],

@@ -21,6 +21,7 @@ CREATE TABLE `players` (
   `elo`           INT UNSIGNED     NOT NULL DEFAULT 1000,
   `elo_timed`     INT UNSIGNED     NOT NULL DEFAULT 1000,
   `elo_streak`    INT UNSIGNED     NOT NULL DEFAULT 1000,
+  `elo_battle`    INT UNSIGNED     NOT NULL DEFAULT 1000,
   `wins`          INT UNSIGNED     NOT NULL DEFAULT 0,
   `losses`        INT UNSIGNED     NOT NULL DEFAULT 0,
   `games_played`  INT UNSIGNED     NOT NULL DEFAULT 0,
@@ -31,7 +32,8 @@ CREATE TABLE `players` (
   UNIQUE KEY `email`    (`email`),
   KEY `idx_elo`        (`elo`),
   KEY `idx_elo_timed`  (`elo_timed`),
-  KEY `idx_elo_streak` (`elo_streak`)
+  KEY `idx_elo_streak` (`elo_streak`),
+  KEY `idx_elo_battle` (`elo_battle`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ─── matches ─────────────────────────────────────────────────────────────────
@@ -39,7 +41,7 @@ CREATE TABLE `matches` (
   `id`           BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   `player1_id`   BIGINT UNSIGNED NOT NULL,
   `player2_id`   BIGINT UNSIGNED NOT NULL,
-  `game_mode`    ENUM('classic','timed','streak') NOT NULL DEFAULT 'classic',
+  `game_mode`    ENUM('classic','timed','streak','battle') NOT NULL DEFAULT 'classic',
   `status`       ENUM('pending','active','completed') NOT NULL DEFAULT 'pending',
   `created_at`   TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `completed_at` TIMESTAMP(6) NULL DEFAULT NULL,

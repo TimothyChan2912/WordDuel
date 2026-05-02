@@ -6,11 +6,11 @@ ALTER TABLE `players`
   ADD COLUMN IF NOT EXISTS `games_played` INT UNSIGNED NOT NULL DEFAULT 0;
 
 ALTER TABLE `matches`
-  ADD COLUMN IF NOT EXISTS `game_mode` ENUM('classic','timed','streak') NOT NULL DEFAULT 'classic';
+  ADD COLUMN IF NOT EXISTS `game_mode` ENUM('classic','timed','streak','battle') NOT NULL DEFAULT 'classic';
 
--- Add streak mode to existing installations (safe to re-run)
+-- Add newer modes to existing installations (safe to re-run)
 ALTER TABLE `matches`
-  MODIFY COLUMN `game_mode` ENUM('classic','timed','streak') NOT NULL DEFAULT 'classic';
+  MODIFY COLUMN `game_mode` ENUM('classic','timed','streak','battle') NOT NULL DEFAULT 'classic';
 
 ALTER TABLE `match_results`
   ADD COLUMN IF NOT EXISTS `player1_score` INT UNSIGNED NOT NULL DEFAULT 0,
@@ -18,11 +18,13 @@ ALTER TABLE `match_results`
 
 -- Per-mode ELO columns (run once on existing installs)
 ALTER TABLE `players`
-  ADD COLUMN `elo_timed`  INT UNSIGNED NOT NULL DEFAULT 1000,
-  ADD COLUMN `elo_streak` INT UNSIGNED NOT NULL DEFAULT 1000;
+  ADD COLUMN IF NOT EXISTS `elo_timed`  INT UNSIGNED NOT NULL DEFAULT 1000,
+  ADD COLUMN IF NOT EXISTS `elo_streak` INT UNSIGNED NOT NULL DEFAULT 1000,
+  ADD COLUMN IF NOT EXISTS `elo_battle` INT UNSIGNED NOT NULL DEFAULT 1000;
 ALTER TABLE `players`
   ADD INDEX `idx_elo_timed`  (`elo_timed`),
-  ADD INDEX `idx_elo_streak` (`elo_streak`);
+  ADD INDEX `idx_elo_streak` (`elo_streak`),
+  ADD INDEX `idx_elo_battle` (`elo_battle`);
 
 -- Daily challenge results (safe to re-run)
 CREATE TABLE IF NOT EXISTS `daily_results` (

@@ -63,6 +63,12 @@
         <div class="mode-elo-value">{{ player.elo_streak }}</div>
         <span class="rank-badge" style="background:{{ rank_streak_color }}22; color:{{ rank_streak_color }}; border:1px solid {{ rank_streak_color }};">{{ rank_streak_name }}</span>
       </div>
+      <div class="mode-elo-card">
+        <div class="mode-elo-icon"><i class="bi bi-shield-slash"></i></div>
+        <div class="mode-elo-name">Battle</div>
+        <div class="mode-elo-value">{{ player.elo_battle }}</div>
+        <span class="rank-badge" style="background:{{ rank_battle_color }}22; color:{{ rank_battle_color }}; border:1px solid {{ rank_battle_color }};">{{ rank_battle_name }}</span>
+      </div>
     </div>
   </div>
 
@@ -133,6 +139,12 @@
         <h4>Streak Mode</h4>
         <p>Keep solving words in a row. One wrong answer and it's over — outlast your opponent.</p>
         <span class="mode-tag">Survival</span>
+      </a>
+      <a href="/game?mode=battle" class="mode-card mode-battle">
+        <div class="mode-icon"><i class="bi bi-shield-slash"></i></div>
+        <h4>Battle Mode</h4>
+        <p>Head-to-head HP battles! Guess the word to deal damage. Last player standing wins.</p>
+        <span class="mode-tag">HP Battles</span>
       </a>
     </div>
   </div>
@@ -215,17 +227,17 @@
   new Chart(document.getElementById('mode-chart'), {
     type: 'bar',
     data: {
-      labels: ['Classic', 'Timed', 'Streak'],
+      labels: ['Classic', 'Timed', 'Streak', 'Battle'],
       datasets: [
         {
           label: 'Wins',
-          data: [modeStats.classic?.wins || 0, modeStats.timed?.wins || 0, modeStats.streak?.wins || 0],
+          data: [modeStats.classic?.wins || 0, modeStats.timed?.wins || 0, modeStats.streak?.wins || 0, modeStats.battle?.wins || 0],
           backgroundColor: '#538d4e',
           borderRadius: 5,
         },
         {
           label: 'Losses',
-          data: [modeStats.classic?.losses || 0, modeStats.timed?.losses || 0, modeStats.streak?.losses || 0],
+          data: [modeStats.classic?.losses || 0, modeStats.timed?.losses || 0, modeStats.streak?.losses || 0, modeStats.battle?.losses || 0],
           backgroundColor: '#ff6b6b',
           borderRadius: 5,
         }

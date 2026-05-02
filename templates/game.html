@@ -22,7 +22,7 @@
     <div id="category-step">
       <h3>Choose a Category</h3>
       <p class="text-muted" style="font-size:0.85rem; margin-bottom:4px;">
-        Mode: <strong>{{ 'Classic PvP' if mode == 'classic' else ('Timed Mode' if mode == 'timed' else 'Streak Mode') }}</strong>
+        Mode: <strong>{{ 'Classic PvP' if mode == 'classic' else ('Timed Mode' if mode == 'timed' else ('Streak Mode' if mode == 'streak' else 'Battle Mode')) }}</strong>
       </p>
       <p class="text-muted" style="font-size:0.82rem; margin-bottom:0;">You'll be matched with players in the same category</p>
       <div class="category-grid">
@@ -43,7 +43,7 @@
       <div class="waiting-spinner"></div>
       <h3>Finding Opponent…</h3>
       <p id="queue-mode-label" class="text-muted" style="font-size:0.85rem;">
-        Mode: <strong>{{ 'Classic PvP' if mode == 'classic' else ('Timed Mode' if mode == 'timed' else 'Streak Mode') }}</strong>
+        Mode: <strong>{{ 'Classic PvP' if mode == 'classic' else ('Timed Mode' if mode == 'timed' else ('Streak Mode' if mode == 'streak' else 'Battle Mode')) }}</strong>
         &nbsp;·&nbsp; Category: <strong id="selected-cat-label">—</strong>
       </p>
       <p id="bot-fallback-msg" class="text-muted" style="font-size:0.85rem; display:none;">
@@ -78,6 +78,26 @@
       </div>
       <button id="leave-btn" class="btn-leave" style="display:none;">Leave Game</button>
     </div>
+  </div>
+
+  <div id="battle-hp" class="battle-hp" style="display:none;">
+
+      <div class="hp-block">
+        <div>You</div>
+        <div class="hp-bar">
+          <div id="your-hp-fill" class="hp-fill"></div>
+        </div>
+        <div id="your-hp-text">100</div>
+      </div>
+
+      <div class="hp-block">
+        <div>Opponent</div>
+        <div class="hp-bar">
+          <div id="opp-hp-fill" class="hp-fill"></div>
+        </div>
+        <div id="opp-hp-text">100</div>
+      </div>
+
   </div>
 
   <!-- Main game area -->
