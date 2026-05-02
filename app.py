@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 from functools import wraps
 from words import WORDS, VALID_WORDS, CATEGORY_WORDS
+from services.rank_service import get_rank_info, get_rank_progress
 
 # Bot constants
 BOT_WAIT_TIME = 12       # seconds before spawning a bot if no match found
@@ -202,6 +203,7 @@ def dashboard():
                 (user_id, user_id),
             )
             recent = cur.fetchall()
+            last_match = recent[0] if recent else None
             # Mode breakdown (classic vs timed)
             cur.execute(
                 """
@@ -238,6 +240,7 @@ def dashboard():
             cur.close()
     except Exception as e:
         print(e)
+        last_match = None
         player = {"username": session["username"], "elo": 1000, "wins": 0, "losses": 0, "games_played": 0}
         recent = []
         mode_stats = {}
@@ -263,6 +266,7 @@ def dashboard():
     rank_timed_name,  rank_timed_color  = get_rank(elo_timed)
     rank_streak_name, rank_streak_color = get_rank(elo_streak)
     rank_battle_name, rank_battle_color = get_rank(elo_battle)
+    rank_progress = get_rank_progress(elo_classic)
     return render_template(
         "dashboard.html",
         player=player,
@@ -274,6 +278,8 @@ def dashboard():
         rank_battle_name=rank_battle_name, rank_battle_color=rank_battle_color,
         mode_stats=mode_stats,
         activity=activity,
+        last_match=last_match,
+        rank_progress=rank_progress,
     )
 
 @app.route("/game")
@@ -1740,6 +1746,7 @@ def _persist_match_result(match, p1, p2, winner_id, elo_changes):
         )
 
         col = ELO_COL.get(match["mode"], "elo")
+        
         for ps in (p1, p2):
             pid = ps["user_id"]
             if pid == BOT_USER_ID:

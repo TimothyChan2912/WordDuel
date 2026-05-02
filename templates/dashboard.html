@@ -41,6 +41,45 @@
     </div>
   </div>
 
+  <!-- Rank Progress + Last Match -->
+  <div class="dashboard-highlight-grid">
+
+    <div class="rank-progress-card">
+      <h3>Rank Progress</h3>
+      <div class="rank-row">
+        <span>{{ rank_name }}</span>
+        {% if rank_progress.next_rank %}
+          <span>{{ player.elo }} / {{ rank_progress.next_elo }} to {{ rank_progress.next_rank }}</span>
+        {% else %}
+          <span>Max Rank</span>
+        {% endif %}
+      </div>
+
+      <div class="progress-bar">
+        <div class="progress-fill" style="width: {{ rank_progress.progress }}%;"></div>
+      </div>
+    </div>
+
+    {% if last_match %}
+    <div class="last-match-card">
+      <h3>Last Match</h3>
+
+      {% if last_match.winner_id == user_id %}
+        <div class="last-match-result win">🏆 Win</div>
+      {% elif last_match.winner_id is none %}
+        <div class="last-match-result draw">Draw</div>
+      {% else %}
+        <div class="last-match-result loss">❌ Loss</div>
+      {% endif %}
+
+      <p>{{ last_match.game_mode|title }} Mode</p>
+      <p>{{ last_match.player1 }} vs {{ last_match.player2 }}</p>
+      <p>Score: {{ last_match.player1_score }} - {{ last_match.player2_score }}</p>
+    </div>
+    {% endif %}
+
+  </div>
+
   <!-- Per-Mode ELO -->
   <div class="mode-elo-section">
     <h3>ELO by Mode</h3>

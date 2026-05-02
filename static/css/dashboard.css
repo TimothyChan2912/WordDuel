@@ -383,6 +383,71 @@
   line-height: 1;
 }
 
+.dashboard-highlight-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.rank-progress-card,
+.last-match-card {
+  background: #16162a;
+  border: 1px solid #4b4bbf;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.rank-progress-card h3,
+.last-match-card h3 {
+  margin-top: 0;
+  font-size: 1rem;
+}
+
+.rank-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-weight: 700;
+}
+
+.progress-bar {
+  height: 12px;
+  background: #2a2a44;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #ffd700;
+  border-radius: 999px;
+}
+
+.last-match-result {
+  font-size: 1.4rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.last-match-result.win {
+  color: #538d4e;
+}
+
+.last-match-result.loss {
+  color: #ff6b6b;
+}
+
+.last-match-result.draw {
+  color: #b59f3b;
+}
+
+@media (max-width: 700px) {
+  .dashboard-highlight-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 860px) {
   .modes-grid { grid-template-columns: 1fr 1fr; }
 }
