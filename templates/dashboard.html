@@ -259,10 +259,11 @@
   let toastDismissTimer = null;
 
   notifSocket.on('challenge_received', data => {
+    const modeLabels = { classic: 'Classic', timed: 'Timed', streak: 'Streak', battle: 'Battle' };
     activeChallengeId = data.challenge_id;
     document.getElementById('toast-challenger').textContent = data.challenger_name;
     document.getElementById('toast-details').textContent =
-      `${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)} · ${data.category}`;
+      `${modeLabels[data.mode] || data.mode} · ${data.category}`;
     document.getElementById('challenge-toast').style.display = 'block';
     clearTimeout(toastDismissTimer);
     let sec = 30;

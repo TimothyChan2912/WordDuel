@@ -2,7 +2,7 @@
 {% block title %} — Leaderboard{% endblock %}
 {% block extra_css %}
 <style>
-.lb-wrapper { max-width: 760px; margin: 40px auto; padding: 0 20px; }
+.lb-wrapper { max-width: 820px; margin: 40px auto; padding: 0 20px; }
 .lb-wrapper h2 { font-weight: 900; font-size: 1.8rem; color: #fff; margin-bottom: 6px; }
 .lb-subtitle { color: #666; font-size: 0.85rem; margin-bottom: 28px; }
 
@@ -37,7 +37,7 @@
 .lb-stat { color: #aaa; font-size: 0.9rem; }
 .lb-wr { color: #6aaa64; font-weight: 700; }
 
-.lb-tabs { display: flex; gap: 8px; margin-bottom: 24px; }
+.lb-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
 .lb-tab {
   padding: 7px 18px; border-radius: 20px; font-size: 0.8rem;
   font-weight: 700; letter-spacing: 0.5px; text-decoration: none;
@@ -56,6 +56,7 @@
     <a href="{{ url_for('leaderboard', mode='classic') }}" class="lb-tab {% if mode == 'classic' %}active{% endif %}"><i class="bi bi-controller"></i> Classic</a>
     <a href="{{ url_for('leaderboard', mode='timed') }}"   class="lb-tab {% if mode == 'timed'   %}active{% endif %}"><i class="bi bi-stopwatch"></i> Timed</a>
     <a href="{{ url_for('leaderboard', mode='streak') }}"  class="lb-tab {% if mode == 'streak'  %}active{% endif %}"><i class="bi bi-lightning-fill"></i> Streak</a>
+    <a href="{{ url_for('leaderboard', mode='battle') }}"  class="lb-tab {% if mode == 'battle'  %}active{% endif %}"><i class="bi bi-shield-slash"></i> Battle</a>
   </div>
   <p class="lb-subtitle">Top 50 players ranked by {{ mode | capitalize }} ELO.</p>
 

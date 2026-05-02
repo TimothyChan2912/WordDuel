@@ -56,6 +56,7 @@
         <label><input type="radio" name="ch-mode" value="classic" checked> Classic</label>
         <label><input type="radio" name="ch-mode" value="timed">   Timed</label>
         <label><input type="radio" name="ch-mode" value="streak">  Streak</label>
+        <label><input type="radio" name="ch-mode" value="battle">  Battle</label>
       </div>
     </div>
     <div class="challenge-field">
@@ -330,10 +331,11 @@
   });
 
   socket.on('challenge_received', data => {
+    const modeLabels = { classic: 'Classic', timed: 'Timed', streak: 'Streak', battle: 'Battle' };
     activeChallengeId = data.challenge_id;
     document.getElementById('toast-challenger').textContent = data.challenger_name;
     document.getElementById('toast-details').textContent =
-      `${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)} · ${data.category}`;
+      `${modeLabels[data.mode] || data.mode} · ${data.category}`;
     document.getElementById('challenge-toast').style.display = 'block';
     clearTimeout(toastDismissTimer);
     let sec = 30;

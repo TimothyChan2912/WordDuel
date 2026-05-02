@@ -203,7 +203,7 @@
   font-size: 0.72rem; color: #666; font-weight: 700;
   text-transform: uppercase; letter-spacing: 1px;
 }
-.mode-radio-group { display: flex; gap: 14px; }
+.mode-radio-group { display: flex; flex-wrap: wrap; gap: 10px 14px; }
 .mode-radio-group label {
   font-size: 0.9rem; color: #ccc; cursor: pointer;
   display: flex; align-items: center; gap: 5px;
